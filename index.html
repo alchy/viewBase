@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Vizualizace - Rozdělený Kód</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="main-container">
+        <div id="scene-container"></div>
+        <div id="css2d-container"></div>
+    </div>
+
+    <div id="sidebar">
+        <div id="ui-panel">
+            <h2>Ovládání kamery</h2>
+            <p>W/S: Nahoru/Dolů | A/D: Doleva/Doprava | Q/E: Zoom | Mezerník: Reset</p>
+            <div>
+                <label for="rotation-speed">Rychlost rotace:</label>
+                <input type="range" id="rotation-speed" min="0.01" max="10" step="0.01" value="1">
+                <span id="speed-value">1.00</span>
+            </div>
+        </div>
+        <div id="debug-panel">
+            <h2>Debug informace</h2>
+            <p>Počáteční pozice kamery: <span id="initial-pos">-</span></p>
+            <p>Aktuální pozice kamery: <span id="current-pos">-</span></p>
+            <p>Počáteční rotace X (Elevace): <span id="initial-rot-x">0°</span></p>
+            <p>Aktuální rotace X (Elevace): <span id="current-rot-x">0°</span></p>
+            <p>Počáteční rotace Y (Azimut): <span id="initial-rot-y">0°</span></p>
+            <p>Aktuální rotace Y (Azimut): <span id="current-rot-y">0°</span></p>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.134.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.134.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module" src="scene.js"></script>
+    <script type="module" src="label_controller.js"></script>
+    <script type="module" src="edges_controller.js"></script>
+    <script type="module" src="global_controller.js"></script>
+</body>
+</html>
