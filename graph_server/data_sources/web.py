@@ -17,9 +17,7 @@ from .base import DataSource
 class WebDataSource(DataSource):
     """Data source for generating a graph from web page text."""
 
-    def load(
-        self, config: Dict
-    ) -> Tuple[Dict[str, List[str]], Dict[str, List[float]], Dict[str, List[float]]]:
+    def load(self, config: Dict) -> Tuple[Dict[str, List[str]], Dict[str, List[float]], Dict[str, List[float]]]:
         """Load text from a web page and create a graph from word co-occurrences."""
         web_url = config["web_url"]
         print(f"Loading text from web: {web_url}")

@@ -6,7 +6,7 @@ such as graph properties, simulation physics, and data source settings.
 """
 
 CONFIG = {
-    "max_position": 1024,                    # Maximum coordinate value for node positions
+    "max_position": 10240,                    # Maximum coordinate value for node positions
     "repulsion_strength": 1000.0,            # Strength of repulsive force between nodes
     "attraction_strength": 0.01,             # Strength of attractive force along edges
     "step_size": 0.05,                       # Time step for simulation updates
