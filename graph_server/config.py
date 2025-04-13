@@ -16,7 +16,7 @@ CONFIG = {
     "edge_count": 20,                        # Number of edges for random graph
     "min_distance": 200.0,                   # Minimum distance for repulsive force calculation
     "num_processes": 4,                      # Number of processes for parallel computation
-    "data_source": "web",                    # Data source: 'random', 'file', or 'web'
+    "data_source": "file",                    # Data source: 'random', 'file', or 'web'
     "file_path": "nodes_test.json",          # Path to JSON file for file-based data
     "web_url": "https://www.novinky.cz",     # URL for web-based data
     "max_unique_words": 250,                 # Maximum unique words for web data
