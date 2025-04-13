@@ -18,7 +18,8 @@ class LabelManager {
         // --> Zkontrolujte v konzoli, zda se tento log zobrazí po kliknutí!
         try {
             // POZNÁMKA: Nahraďte 'https://your-api-endpoint.com/nodes' vaší skutečnou adresou API
-            const response = await fetch('https://your-api-endpoint.com/nodes', {
+            console.log(`[LabelManager] Vykonam POST pro uzel ${nodeId}.`);
+            const response = await fetch('http://localhost:8080/api/v1.0/post-label-click', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

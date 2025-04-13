@@ -6,8 +6,8 @@ force-directed graph simulation. It integrates the simulation and data source
 modules to serve graph data to clients.
 """
 
-from flask import Flask, jsonify, send_from_directory
-import os
+from flask import Flask, request, jsonify, send_from_directory
+import os, sys
 from simulation.graph import Graph
 from simulation.simulation import Simulation
 from data_sources import load_data_source
@@ -50,6 +50,52 @@ def get_graph_data():
     response = {"nodes": nodes, "edges": edges}
     print("API request processed successfully.")
     return jsonify(response)
+
+
+@app.route('/api/v1.0/post-label-click', methods=['POST'])
+def handle_label_click():
+    """
+    API endpoint to receive node click information from the frontend.
+    Expects a JSON body like: {"nodeId": "some_node_id", "timestamp": "iso_timestamp"}
+    """
+    print("Received request on /api/v1.0/post-label-click")
+    
+    # Získání JSON dat z těla požadavku
+    data = request.get_json()
+
+    # Kontrola, zda byla data přijata a jsou ve formátu JSON
+    if not data:
+        print("Error: No JSON data received or Content-Type incorrect.", file=sys.stderr)
+        return jsonify({"status": "error", "message": "Invalid request. Expected JSON data."}), 400 # Bad Request
+
+    # Extrahování 'nodeId' z JSON dat
+    node_id = data.get('nodeId')
+    timestamp = data.get('timestamp') # Můžeme získat i timestamp pro případné logování
+
+    # Kontrola, zda 'nodeId' existuje v datech
+    if node_id is None:
+        print("Error: 'nodeId' missing in received JSON data.", file=sys.stderr)
+        # Odpověď klientovi, že data jsou neúplná
+        return jsonify({"status": "error", "message": "'nodeId' is required in JSON body."}), 400 # Bad Request
+
+    # *** Požadovaná akce: Vytisknutí přijatého nodeId na konzoli serveru ***
+    print(f"--- Label Click Received ---")
+    print(f"  Node ID: {node_id}")
+    if timestamp:
+        print(f"  Timestamp: {timestamp}")
+    print(f"--------------------------")
+    sys.stdout.flush() # Zajistí okamžitý výpis na konzoli
+
+    # Zde můžete v budoucnu přidat další logiku, např.:
+    # - Uložit kliknutí do databáze
+    # - Spustit nějakou akci v simulaci na základě kliknutého uzlu
+    # - Poslat informaci dalším připojeným klientům (přes WebSockets atd.)
+
+    # Odeslání úspěšné odpovědi zpět klientovi (JavaScriptu)
+    return jsonify({
+        "status": "success",
+        "message": f"Click event for node '{node_id}' received successfully."
+    }), 200 # HTTP status code 200 OK
 
 
 def main():
