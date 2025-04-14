@@ -15,15 +15,12 @@ class LabelManager {
     // Privátní funkce pro odeslání POST požadavku při kliknutí na popisek
     async #sendPostRequest(nodeId) {
         console.log(`[LabelManager] Spouští se POST požadavek pro uzel: ${nodeId}`);
-        // --> Zkontrolujte v konzoli, zda se tento log zobrazí po kliknutí!
         try {
-            // POZNÁMKA: Nahraďte 'https://your-api-endpoint.com/nodes' vaší skutečnou adresou API
             console.log(`[LabelManager] Vykonam POST pro uzel ${nodeId}.`);
             const response = await fetch('http://localhost:8080/api/v1.0/post-label-click', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // Případně další hlavičky (např. autorizace), pokud je API vyžaduje
                 },
                 body: JSON.stringify({
                     nodeId: nodeId,
@@ -52,15 +49,12 @@ class LabelManager {
         labelDiv.dataset.labelId = id;
         labelDiv.dataset.nodeId = text; // Ukládáme ID uzlu
 
-        // --- ÚPRAVA: Explicitní nastavení pointer-events ---
         // Toto zajistí, že element bude reagovat na události myši,
         // i kdyby externí CSS (např. pro .static-label nebo rodičovské elementy)
         // nastavovalo 'pointer-events: none;'.
         labelDiv.style.pointerEvents = 'auto';
-        // --- Konec úpravy ---
 
         console.log(`[LabelManager] Vytvářím popisek: ID="${id}", Text="${text}", Třída="${cssClass}"`);
-
         // Uchování reference na metodu pro správné odstranění listeneru
         // Použití arrow funkce zachovává správný kontext 'this' pro #sendPostRequest
         const clickHandler = (event) => {
@@ -68,7 +62,6 @@ class LabelManager {
             // if (event.target !== labelDiv) return;
 
             console.log(`[LabelManager] Kliknuto na popisek: ID="${id}", Uzel="${text}"`);
-            // Zavoláme privátní metodu pro odeslání požadavku
             this.#sendPostRequest(text);
 
             // DŮLEŽITÉ: Pokud kliknutí interaguje i s 3D scénou (např. OrbitControls),
@@ -100,7 +93,7 @@ class LabelManager {
         this.labels.set(id, labelObject);
         console.log(`[LabelManager] Popisek přidán do scény: ID="${id}", Text="${text}", Pozice=(${x},${y},${z})`);
 
-        // Debug ověření připojení k DOM (ponecháno pro diagnostiku)
+        // Debug ověření připojení k DOM (pro diagnostiku)
         setTimeout(() => {
             if (document.contains(labelDiv)) { // Spolehlivější kontrola než parentNode
                 console.log(`[LabelManager] Popisek ID="${id}" je v DOM.`);
@@ -138,7 +131,7 @@ class LabelManager {
         // Odstranění elementu z DOM (pro jistotu, i když by to měl dělat three.js)
         if (labelDiv && labelDiv.parentNode) {
              labelDiv.parentNode.removeChild(labelDiv);
-             // console.log(`[LabelManager] Popisek ID="${id}" explicitně odstraněn z DOM.`); // Možná redundantní log
+             // console.log(`[LabelManager] Popisek ID="${id}" explicitně odstraněn z DOM.`); 
         }
 
         // Odstranění z naší mapy
@@ -176,7 +169,7 @@ class LabelManager {
     }
 }
 
-// Export a globální instance (ponecháno jak bylo)
+// Export a globální instance
 let labelManager = null;
 
 window.addEventListener('viewerInitialized', () => {
