@@ -57,45 +57,46 @@ def handle_label_click():
     """
     API endpoint to receive node click information from the frontend.
     Expects a JSON body like: {"nodeId": "some_node_id", "timestamp": "iso_timestamp"}
+    Updates the simulation's centering target.
     """
     print("Received request on /api/v1.0/post-label-click")
     
-    # Získání JSON dat z těla požadavku
     data = request.get_json()
-
-    # Kontrola, zda byla data přijata a jsou ve formátu JSON
     if not data:
         print("Error: No JSON data received or Content-Type incorrect.", file=sys.stderr)
-        return jsonify({"status": "error", "message": "Invalid request. Expected JSON data."}), 400 # Bad Request
+        return jsonify({"status": "error", "message": "Invalid request. Expected JSON data."}), 400
 
-    # Extrahování 'nodeId' z JSON dat
     node_id = data.get('nodeId')
-    timestamp = data.get('timestamp') # Můžeme získat i timestamp pro případné logování
+    timestamp = data.get('timestamp') 
 
-    # Kontrola, zda 'nodeId' existuje v datech
     if node_id is None:
         print("Error: 'nodeId' missing in received JSON data.", file=sys.stderr)
-        # Odpověď klientovi, že data jsou neúplná
-        return jsonify({"status": "error", "message": "'nodeId' is required in JSON body."}), 400 # Bad Request
+        return jsonify({"status": "error", "message": "'nodeId' is required in JSON body."}), 400
 
-    # *** Požadovaná akce: Vytisknutí přijatého nodeId na konzoli serveru ***
+    # *** ZDE VOLÁME METODU SIMULACE PRO NASTAVENÍ CÍLE ***
     print(f"--- Label Click Received ---")
     print(f"  Node ID: {node_id}")
     if timestamp:
         print(f"  Timestamp: {timestamp}")
+    
+    # Zavoláme metodu na (globální) instanci simulace
+    # Předpokládáme, že instance 'simulation' definovaná na začátku souboru je ta správná
+    if simulation:
+        simulation.set_center_target(node_id) 
+        print(f"  Simulation center target set to: {node_id}")
+    else:
+        print("  Error: Simulation object not found.", file=sys.stderr)
+        # V tomto případě by odpověď měla indikovat chybu serveru
+        return jsonify({"status": "error", "message": "Simulation not available on server."}), 500
+
     print(f"--------------------------")
-    sys.stdout.flush() # Zajistí okamžitý výpis na konzoli
+    sys.stdout.flush() 
 
-    # Zde můžete v budoucnu přidat další logiku, např.:
-    # - Uložit kliknutí do databáze
-    # - Spustit nějakou akci v simulaci na základě kliknutého uzlu
-    # - Poslat informaci dalším připojeným klientům (přes WebSockets atd.)
-
-    # Odeslání úspěšné odpovědi zpět klientovi (JavaScriptu)
+    # Odešleme úspěšnou odpověď
     return jsonify({
         "status": "success",
-        "message": f"Click event for node '{node_id}' received successfully."
-    }), 200 # HTTP status code 200 OK
+        "message": f"Click event for node '{node_id}' received and center target updated."
+    }), 200
 
 
 def main():

@@ -6,7 +6,7 @@ such as graph properties, simulation physics, and data source settings.
 """
 
 CONFIG = {
-    "max_position": 10240,                    # Maximum coordinate value for node positions
+    "max_position": 2048,                    # Maximum coordinate value for node positions
     "repulsion_strength": 1000.0,            # Strength of repulsive force between nodes
     "attraction_strength": 0.01,             # Strength of attractive force along edges
     "step_size": 0.05,                       # Time step for simulation updates
@@ -16,9 +16,9 @@ CONFIG = {
     "edge_count": 20,                        # Number of edges for random graph
     "min_distance": 200.0,                   # Minimum distance for repulsive force calculation
     "num_processes": 4,                      # Number of processes for parallel computation
-    "data_source": "file",                    # Data source: 'random', 'file', or 'web'
+    "data_source": "web",                    # Data source: 'random', 'file', or 'web'
     "file_path": "nodes_test.json",          # Path to JSON file for file-based data
-    "web_url": "https://www.novinky.cz",     # URL for web-based data
+    "web_url": "https://www.seznam.cz",     # URL for web-based data
     "max_unique_words": 250,                 # Maximum unique words for web data
     "degree_factor": 64.0                    # Factor to scale repulsion by node degree
 }
