@@ -22,14 +22,16 @@ simulation = Simulation(graph, CONFIG)
 
 @app.route('/')
 def index():
-    """Root endpoint indicating the server is running."""
-    return "Graph Server is running. Use /api/v1.0/get-graph-data for graph data."
+    """Serve index.html as the root endpoint."""
+    # Serve from current working directory (should be project root when using main.py)
+    return send_from_directory(os.getcwd(), 'index.html')
 
 
 @app.route('/<path:filename>')
 def serve_file(filename):
-    """Serve static files from the current directory."""
-    print(f"Serving file: {filename}")
+    """Serve static files from the current working directory."""
+    print(f"Serving file: {filename} from {os.getcwd()}")
+    # Serve from current working directory (should be project root when using main.py)
     return send_from_directory(os.getcwd(), filename)
 
 
