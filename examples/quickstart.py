@@ -18,8 +18,9 @@ def zivy_graf() -> None:
     i = 30
     while True:
         time.sleep(2.0)
-        canvas.add_node(f"n{i}", value=i)
-        canvas.add_edge(f"n{i}", f"n{random.randrange(i)}")
+        with canvas.batch():
+            canvas.add_node(f"n{i}", value=i)
+            canvas.add_edge(f"n{i}", f"n{random.randrange(i)}")
         i += 1
 
 
