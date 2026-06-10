@@ -89,3 +89,15 @@ def test_label_defaults_to_id():
     c = Canvas()
     c.add_node("a")
     assert c.snapshot()["nodes"][0]["label"] == "a"
+
+
+def test_snapshot_is_isolated_from_internal_state():
+    c = Canvas()
+    c.add_node("a", tags={"env": "prod"})
+    c.add_node("b")
+    c.add_edge("a", "b", weight=1)
+    snap = c.snapshot()
+    snap["edges"][0]["meta"]["weight"] = 999
+    snap["config"]["title"] = "hacked"
+    assert c.snapshot()["edges"][0]["meta"]["weight"] == 1
+    assert c.snapshot()["config"]["title"] == "viewbase"

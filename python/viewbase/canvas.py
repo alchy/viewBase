@@ -107,7 +107,7 @@ class Canvas:
                 raise ValueError(f"Hrana {key[0]}–{key[1]} už existuje")
             edge = {"source": key[0], "target": key[1], "meta": dict(meta)}
             self._edges[key] = edge
-            self._pending["add_edges"][key] = dict(edge)
+            self._pending["add_edges"][key] = self._public_edge(edge)
 
     def remove_edge(self, source: str, target: str) -> None:
         with self._lock:
@@ -143,6 +143,11 @@ class Canvas:
         return {"id": node["id"], "type": node["type"],
                 "label": self._render_label(node), "meta": dict(node["meta"])}
 
+    @staticmethod
+    def _public_edge(edge: dict[str, Any]) -> dict[str, Any]:
+        return {"source": edge["source"], "target": edge["target"],
+                "meta": dict(edge["meta"])}
+
     # ---- snapshot ------------------------------------------------------
 
     def snapshot(self) -> dict[str, Any]:
@@ -154,5 +159,5 @@ class Canvas:
                 "config": dict(self.config),
                 "node_types": {n: dict(s) for n, s in self._node_types.items()},
                 "nodes": [self._public_node(n) for n in self._nodes.values()],
-                "edges": [dict(e) for e in self._edges.values()],
+                "edges": [self._public_edge(e) for e in self._edges.values()],
             }
