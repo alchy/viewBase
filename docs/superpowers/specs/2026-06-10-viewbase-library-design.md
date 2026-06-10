@@ -260,6 +260,9 @@ themes/    definice témat + theme engine
 - Klik: event na server + okamžitá lokální odezva — zvýraznění sousedů do N
   úrovní (BFS ve store, ztlumení ostatních per-instance barvou) a plynulý
   dolet kamery (centrování dělá kamera klienta, ne backend fyzikou).
+- Klávesnice (převzato z prototypu): W/S = posun pohledu nahoru/dolů,
+  A/D = doleva/doprava, Q/E = zoom in/out, mezerník = reset pohledu.
+  Funguje v 3D (orbit) i 2D (pan).
 - 2D režim: stejná scéna a vrstvy, ortografická kamera, pan/zoom, fyzika ve
   2 dimenzích.
 
