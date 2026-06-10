@@ -3,4 +3,5 @@
 .claude
 node_modules/
 python/viewbase/static/
+.idea/
 
