@@ -161,3 +161,34 @@ class Canvas:
                 "nodes": [self._public_node(n) for n in self._nodes.values()],
                 "edges": [self._public_edge(e) for e in self._edges.values()],
             }
+
+    # ---- delty ---------------------------------------------------------
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """Podrž delty pohromadě – odejdou jako jeden patch po opuštění bloku."""
+        with self._lock:
+            self._batch_depth += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._batch_depth -= 1
+
+    def drain(self) -> tuple[int, dict[str, list]] | None:
+        """Vrátí (seq, delty) k odeslání, nebo None když není co poslat."""
+        with self._lock:
+            if self._batch_depth > 0:
+                return None
+            if not any(self._pending.values()):
+                return None
+            deltas = {
+                "remove_edges": [list(k) for k in self._pending["remove_edges"]],
+                "remove_nodes": list(self._pending["remove_nodes"]),
+                "add_nodes": list(self._pending["add_nodes"].values()),
+                "update_nodes": list(self._pending["update_nodes"].values()),
+                "add_edges": list(self._pending["add_edges"].values()),
+            }
+            self._pending = self._empty_pending()
+            self._seq += 1
+            return self._seq, deltas
