@@ -51,4 +51,14 @@ describe('PhysicsCore', () => {
     expect(buf[2]).toBe(0);
     expect(buf[5]).toBe(0);
   });
+
+  it('linkKey nekoliduje pro id s mezerami', () => {
+    const core = new PhysicsCore({ dimensions: 3 });
+    core.applyInit({
+      nodes: [{ id: 'a b' }, { id: 'c' }],
+      links: [{ source: 'a b', target: 'c' }],
+    });
+    core.applyPatch({ removeLinks: [['a', 'b c']] });   // jiná (neexistující) hrana
+    expect(core.links).toHaveLength(1);                  // původní hrana přežila
+  });
 });

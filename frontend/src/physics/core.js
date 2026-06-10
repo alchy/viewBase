@@ -9,7 +9,7 @@ function endId(end) {
 }
 
 function linkKey(s, t) {
-  return s <= t ? `${s} ${t}` : `${t} ${s}`;
+  return s <= t ? `${s}\u0000${t}` : `${t}\u0000${s}`;
 }
 
 /** Fyzikální jádro – čistá logika bez Workeru (testovatelné ve vitestu). */
@@ -49,8 +49,8 @@ export class PhysicsCore {
     }
     const neighborOf = new Map();
     for (const { source, target } of addLinks) {
-      neighborOf.set(source, target);
-      neighborOf.set(target, source);
+      if (!neighborOf.has(source)) neighborOf.set(source, target);
+      if (!neighborOf.has(target)) neighborOf.set(target, source);
     }
     for (const { id } of addNodes) {
       if (this.byId.has(id)) continue;                      // idempotence

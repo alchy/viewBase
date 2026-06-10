@@ -13,7 +13,7 @@ self.onmessage = ({ data }) => {
   if (data.type === 'init') {
     core = new PhysicsCore({ dimensions: data.dimensions });
     core.applyInit(data);
-  } else if (data.type === 'patch') {
+  } else if (data.type === 'patch' && core) {
     core.applyPatch(data);
   } else {
     return;
