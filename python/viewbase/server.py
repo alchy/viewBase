@@ -24,16 +24,19 @@ PATCH_INTERVAL = 1 / 30
 async def _broadcast_loop(canvas: Canvas, clients: set[WebSocket]) -> None:
     while True:
         await asyncio.sleep(PATCH_INTERVAL)
-        drained = canvas.drain()
-        if drained is None or not clients:
-            continue
-        seq, deltas = drained
-        raw = protocol.encode(protocol.patch_message(seq, deltas))
-        for ws in list(clients):
-            try:
-                await ws.send_text(raw)
-            except Exception:
-                clients.discard(ws)
+        try:
+            drained = canvas.drain()
+            if drained is None or not clients:
+                continue
+            seq, deltas = drained
+            raw = protocol.encode(protocol.patch_message(seq, deltas))
+            for ws in list(clients):
+                try:
+                    await ws.send_text(raw)
+                except Exception:
+                    clients.discard(ws)
+        except Exception:
+            logger.exception("Chyba ve vysílací smyčce")
 
 
 def create_app(canvas: Canvas) -> FastAPI:
@@ -52,17 +55,22 @@ def create_app(canvas: Canvas) -> FastAPI:
         await ws.accept()
         try:
             hello = protocol.decode(await ws.receive_text())
+        except WebSocketDisconnect:
+            return
         except ValueError:
             await ws.close()
             return
-        if (hello.get("type") != "hello"
-                or hello.get("protocol") != protocol.PROTOCOL_VERSION):
+        try:
+            if (hello.get("type") != "hello"
+                    or hello.get("protocol") != protocol.PROTOCOL_VERSION):
+                await ws.send_text(protocol.encode(
+                    {"type": "error", "error": "protocol_mismatch"}))
+                await ws.close()
+                return
             await ws.send_text(protocol.encode(
-                {"type": "error", "error": "protocol_mismatch"}))
-            await ws.close()
+                protocol.init_message(**canvas.snapshot())))
+        except WebSocketDisconnect:
             return
-        await ws.send_text(protocol.encode(
-            protocol.init_message(**canvas.snapshot())))
         clients.add(ws)
         try:
             while True:
