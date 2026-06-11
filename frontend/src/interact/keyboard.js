@@ -67,7 +67,7 @@ export class KeyboardControls {
   /** factor < 1 přibližuje: 3D zmenší vzdálenost, 2D zvětší camera.zoom. */
   _zoom(factor) {
     if (this.is2d) {
-      this.camera.zoom /= factor;
+      this.camera.zoom = Math.min(20, Math.max(0.05, this.camera.zoom / factor));
       this.camera.updateProjectionMatrix();
     } else {
       this._offset.copy(this.camera.position).sub(this.controls.target);

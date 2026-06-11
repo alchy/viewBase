@@ -28,7 +28,9 @@ function bootstrap() {
 
   function applyHighlight(nodeId, depth) {
     const levels = depth ?? store.config.highlight_neighbors ?? 1;
-    renderer.setHighlight(neighborhood(store, nodeId, levels));
+    const ids = neighborhood(store, nodeId, levels);
+    // Neznámý uzel = prázdná množina: radši nic nezvýraznit než ztlumit vše
+    renderer.setHighlight(ids.size > 0 ? ids : null);
   }
 
   function showDetail(nodeId) {
