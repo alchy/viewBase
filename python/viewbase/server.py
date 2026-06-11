@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import uuid
 import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -53,6 +54,7 @@ def create_app(canvas: Canvas) -> FastAPI:
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket) -> None:
         await ws.accept()
+        client_id = uuid.uuid4().hex[:8]
         try:
             hello = protocol.decode(await ws.receive_text())
         except WebSocketDisconnect:
@@ -76,9 +78,20 @@ def create_app(canvas: Canvas) -> FastAPI:
             while True:
                 raw = await ws.receive_text()
                 try:
-                    protocol.decode(raw)   # eventy zpracuje Plán 2
+                    msg = protocol.decode(raw)
                 except ValueError:
-                    logger.warning("Vadná zpráva od klienta: %r", raw[:200])
+                    logger.warning("Vadná zpráva od klienta %s: %r",
+                                   client_id, raw[:200])
+                    continue
+                if msg.get("type") == "event" and isinstance(msg.get("event"), str):
+                    payload = msg.get("payload")
+                    if not isinstance(payload, dict):
+                        payload = {}
+                    canvas.dispatch_event(
+                        msg["event"], {**payload, "client_id": client_id})
+                else:
+                    logger.warning("Nečekaná zpráva od klienta %s: %r",
+                                   client_id, raw[:200])
         except WebSocketDisconnect:
             pass
         finally:
