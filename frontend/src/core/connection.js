@@ -9,6 +9,7 @@ export class Connection {
     minBackoff = 500,
     maxBackoff = 10000,
     onStatus = () => {},
+    onAction = () => {},
   } = {}) {
     this.url = url;
     this.store = store;
@@ -18,6 +19,7 @@ export class Connection {
     this.maxBackoff = maxBackoff;
     this.backoff = minBackoff;
     this.onStatus = onStatus;
+    this.onAction = onAction;
     this.stopped = false;   // po protocol_mismatch se už nereconnectuje
     this.ws = null;
   }
@@ -51,6 +53,8 @@ export class Connection {
       this.onStatus('init');
     } else if (msg.type === 'patch') {
       if (!this.store.applyPatch(msg)) this.ws.close();  // mezera v seq
+    } else if (msg.type === 'action') {
+      this.onAction(msg);
     } else if (msg.type === 'error') {
       console.error('viewbase server:', msg.error);
       if (msg.error === 'protocol_mismatch') {

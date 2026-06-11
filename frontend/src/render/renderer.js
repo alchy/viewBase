@@ -5,6 +5,8 @@ const NODE_COLOR = 0x2f7fe8;
 const EDGE_COLOR = 0x9aa3af;
 const BACKGROUND = 0xf4f5f7;
 const SMOOTHING = 8;   // 1/s – rychlost dobíhání zobrazené pozice k fyzice
+const DIM_TOWARD_BG = 0.75;  // ztlumené uzly: 75 % cesty k barvě pozadí
+const FOCUS_DURATION = 0.6;  // s – dolet kamery na uzel
 
 /** Instancovaný renderer: jeden InstancedMesh pro uzly, jeden LineSegments
  *  pro hrany. Zobrazené pozice se vyhlazují exponenciálně mezi fyz. ticky. */
@@ -46,6 +48,14 @@ export class Renderer {
     this.raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
 
+    this.highlightSet = null;   // Set id | null = bez zvýraznění
+    this._fullColor = new THREE.Color(NODE_COLOR);
+    this._dimColor = new THREE.Color(NODE_COLOR)
+      .lerp(new THREE.Color(BACKGROUND), DIM_TOWARD_BG);
+    this.focusId = null;        // id uzlu, ke kterému letí kamera
+    this.focusElapsed = 0;
+    this._focusFrom = new THREE.Vector3();
+
     window.addEventListener('resize', () => {
       this.camera.aspect = container.clientWidth / container.clientHeight;
       this.camera.updateProjectionMatrix();
@@ -64,7 +74,7 @@ export class Renderer {
     }
     const geometry = new THREE.SphereGeometry(3, 12, 8);
     const material = new THREE.MeshStandardMaterial(
-      { color: NODE_COLOR, roughness: 0.4 });
+      { color: 0xffffff, roughness: 0.4 });
     this.nodeMesh = new THREE.InstancedMesh(geometry, material, capacity);
     this.nodeMesh.count = 0;
     this.scene.add(this.nodeMesh);
@@ -99,6 +109,7 @@ export class Renderer {
     const dt = this.clock.getDelta();
     this._syncNodes(dt);
     this._syncEdges();
+    this._stepFocus(dt);
     this.controls.update();
     this.webgl.render(this.scene, this.camera);
   }
@@ -125,12 +136,16 @@ export class Renderer {
       pos.z += (tz - pos.z) * k;
       this._matrix.makeTranslation(pos.x, pos.y, pos.z);
       this.nodeMesh.setMatrixAt(i, this._matrix);
+      const color = (this.highlightSet === null || this.highlightSet.has(id))
+        ? this._fullColor : this._dimColor;
+      this.nodeMesh.setColorAt(i, color);
     }
     for (const id of this.display.keys()) {
       if (!seen.has(id)) this.display.delete(id);
     }
     this.nodeMesh.count = count;
     this.nodeMesh.instanceMatrix.needsUpdate = true;
+    if (this.nodeMesh.instanceColor) this.nodeMesh.instanceColor.needsUpdate = true;
   }
 
   /** Vrátí id uzlu pod souřadnicemi obrazovky, nebo null.
@@ -159,6 +174,34 @@ export class Renderer {
       target: { x: t.x, y: t.y, z: t.z },
       zoom: this.camera.zoom,
     };
+  }
+
+  /** Zvýrazni množinu uzlů (Set id); ostatní se ztlumí. null = reset. */
+  setHighlight(ids) {
+    this.highlightSet = ids;
+  }
+
+  /** Plynulý dolet kamery: tween controls.target k display pozici uzlu. */
+  focusOn(nodeId) {
+    if (!this.controls) return;
+    this.focusId = nodeId;
+    this.focusElapsed = 0;
+    this._focusFrom.copy(this.controls.target);
+  }
+
+  _stepFocus(dt) {
+    if (this.focusId === null) return;
+    if (!this.store.nodes.has(this.focusId)) {   // uzel mezitím zmizel
+      this.focusId = null;
+      return;
+    }
+    const pos = this.display.get(this.focusId);
+    if (!pos) return;                            // čeká na první pozici z fyziky
+    this.focusElapsed = Math.min(this.focusElapsed + dt, FOCUS_DURATION);
+    const t = this.focusElapsed / FOCUS_DURATION;
+    const eased = 1 - (1 - t) ** 3;              // easeOutCubic
+    this.controls.target.lerpVectors(this._focusFrom, pos, eased);
+    if (t >= 1) this.focusId = null;
   }
 
   _syncEdges() {

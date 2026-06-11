@@ -1,6 +1,8 @@
 import { Connection } from './core/connection.js';
 import { GraphStore } from './core/store.js';
 import { StatusOverlay } from './core/status.js';
+import { DetailBox } from './interact/detail.js';
+import { neighborhood } from './interact/highlight.js';
 import { Picker, buildEvent } from './interact/picking.js';
 import { throttle } from './interact/throttle.js';
 import { PhysicsEngine } from './physics/engine.js';
@@ -22,12 +24,30 @@ function bootstrap() {
   const store = new GraphStore();
   const engine = new PhysicsEngine(store);
   const renderer = new Renderer(document.getElementById('app'), store, engine);
+  const detail = new DetailBox();
 
   store.subscribe((event) => {
     if (event.kind === 'init' && store.config.title) {
       document.title = `${store.config.title} – viewbase`;
     }
   });
+
+  function applyHighlight(nodeId, depth) {
+    const levels = depth ?? store.config.highlight_neighbors ?? 1;
+    renderer.setHighlight(neighborhood(store, nodeId, levels));
+  }
+
+  function showDetail(nodeId) {
+    const node = store.nodes.get(nodeId);
+    if (node) detail.show({ label: node.label, meta: node.meta });
+  }
+
+  const actions = {
+    show_detail: (msg) => showDetail(msg.node_id),
+    focus: (msg) => renderer.focusOn(msg.node_id),
+    highlight: (msg) => applyHighlight(msg.node_id, msg.depth),
+    set_theme: (msg) => { store.config.theme = msg.theme; },  // vizuál v Plánu 2b
+  };
 
   const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';
   const connection = new Connection(`${wsScheme}://${location.host}/ws`, store, {
@@ -40,11 +60,26 @@ function bootstrap() {
         status.show('Server běží s jinou verzí protokolu – obnovte stránku (F5).');
       }
     },
+    onAction: (msg) => {
+      const handler = actions[msg.action];
+      if (handler) handler(msg);
+      else console.warn('viewbase: neznámá akce', msg.action);
+    },
   });
 
   new Picker(renderer.webgl.domElement,
     (x, y) => renderer.pick(x, y),
-    (message) => connection.send(message));
+    (message) => connection.send(message), {
+      onNodeClick: (id) => {                  // okamžitá lokální odezva
+        const levels = store.config.highlight_neighbors ?? 1;
+        if (levels > 0) applyHighlight(id, levels);
+        renderer.focusOn(id);
+      },
+      onBackgroundClick: () => {
+        renderer.setHighlight(null);
+        detail.hide();
+      },
+    });
 
   const sendViewChange = throttle(() => {
     const state = renderer.viewState();

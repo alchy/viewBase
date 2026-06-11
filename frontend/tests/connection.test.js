@@ -101,4 +101,16 @@ describe('Connection', () => {
     ws.message(initMsg);
     expect(statuses).toEqual(['init', 'close', 'init']);
   });
+
+  it('akce ze serveru jde do onAction', () => {
+    const actionsSeen = [];
+    const conn = new Connection('ws://x/ws', store,
+      { WebSocketImpl: FakeWebSocket, schedule, onAction: (m) => actionsSeen.push(m) });
+    conn.connect();
+    const ws = FakeWebSocket.instances.at(-1);
+    ws.open();
+    ws.message(initMsg);
+    ws.message({ type: 'action', action: 'focus', node_id: 'a' });
+    expect(actionsSeen).toEqual([{ type: 'action', action: 'focus', node_id: 'a' }]);
+  });
 });
