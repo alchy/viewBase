@@ -42,6 +42,7 @@ class Canvas:
         self._handlers: dict[str, list[Callable[[Any], None]]] = {}
         self._executor = ThreadPoolExecutor(
             max_workers=4, thread_name_prefix="viewbase-handler")
+        self._actions: list[dict[str, Any]] = []
 
     @staticmethod
     def _empty_pending() -> dict[str, dict]:
@@ -244,3 +245,42 @@ class Canvas:
             handler(event)
         except Exception:
             logger.exception("Výjimka v handleru eventu '%s'", name)
+
+    # ---- akce server -> klient -------------------------------------------
+
+    def show_detail(self, node_id: str) -> None:
+        """Zobrazí na klientech detail box s metadaty uzlu."""
+        self._queue_node_action("show_detail", node_id)
+
+    def focus(self, node_id: str) -> None:
+        """Plynulý dolet kamery na uzel."""
+        self._queue_node_action("focus", node_id)
+
+    def highlight(self, node_id: str, depth: int | None = None) -> None:
+        """Zvýrazní uzel a sousedy do hloubky depth (None = config klienta)."""
+        with self._lock:
+            self._require_node(node_id)
+            self._actions.append(
+                {"action": "highlight", "node_id": node_id, "depth": depth})
+
+    def set_theme(self, theme: Any) -> None:
+        """Přepne téma. Vizuální zpracování přijde v Plánu 2b – klient si
+        hodnotu zatím jen uloží do configu."""
+        with self._lock:
+            self.config["theme"] = theme
+            self._actions.append({"action": "set_theme", "theme": theme})
+
+    def _queue_node_action(self, action: str, node_id: str) -> None:
+        with self._lock:
+            self._require_node(node_id)
+            self._actions.append({"action": action, "node_id": node_id})
+
+    def _require_node(self, node_id: str) -> None:
+        if node_id not in self._nodes:
+            raise ValueError(f"Uzel '{node_id}' neexistuje")
+
+    def drain_actions(self) -> list[dict[str, Any]]:
+        """Vrátí akce k odeslání (v pořadí volání) a frontu vyprázdní."""
+        with self._lock:
+            actions, self._actions = self._actions, []
+            return actions

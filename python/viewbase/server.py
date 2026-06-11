@@ -22,30 +22,44 @@ STATIC_DIR = Path(__file__).parent / "static"
 PATCH_INTERVAL = 1 / 30
 
 
-async def _broadcast_loop(canvas: Canvas, clients: set[WebSocket]) -> None:
+async def _broadcast_step(canvas: Canvas, clients: set[WebSocket]) -> None:
+    """Jeden krok vysílání: nejdřív patch (data), pak akce (odkazují na data)."""
+    drained = canvas.drain()
+    actions = canvas.drain_actions()
+    messages = []
+    if drained is not None:
+        seq, deltas = drained
+        messages.append(protocol.encode(protocol.patch_message(seq, deltas)))
+    messages.extend(
+        protocol.encode({"type": "action", **action}) for action in actions)
+    if not messages or not clients:
+        return
+    for ws in list(clients):
+        try:
+            for raw in messages:
+                await ws.send_text(raw)
+        except Exception:
+            clients.discard(ws)
+
+
+async def _broadcast_loop(canvas: Canvas, clients: set[WebSocket],
+                          state_lock: asyncio.Lock) -> None:
     while True:
         await asyncio.sleep(PATCH_INTERVAL)
         try:
-            drained = canvas.drain()
-            if drained is None or not clients:
-                continue
-            seq, deltas = drained
-            raw = protocol.encode(protocol.patch_message(seq, deltas))
-            for ws in list(clients):
-                try:
-                    await ws.send_text(raw)
-                except Exception:
-                    clients.discard(ws)
+            async with state_lock:
+                await _broadcast_step(canvas, clients)
         except Exception:
             logger.exception("Chyba ve vysílací smyčce")
 
 
 def create_app(canvas: Canvas) -> FastAPI:
     clients: set[WebSocket] = set()
+    state_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        task = asyncio.create_task(_broadcast_loop(canvas, clients))
+        task = asyncio.create_task(_broadcast_loop(canvas, clients, state_lock))
         yield
         task.cancel()
 
@@ -69,11 +83,18 @@ def create_app(canvas: Canvas) -> FastAPI:
                     {"type": "error", "error": "protocol_mismatch"}))
                 await ws.close()
                 return
-            await ws.send_text(protocol.encode(
-                protocol.init_message(**canvas.snapshot())))
+            # Sdílený zámek: snapshot + zařazení mezi klienty musí být atomické
+            # vůči broadcast kroku, jinak novému klientovi uteče patch (mezera
+            # v seq hned po připojení).
+            async with state_lock:
+                snap = canvas.snapshot()
+                canvas.drain()          # zahodit delty pokryté snapshotem
+                canvas.drain_actions()  # zahodit akce vzniklé před připojením
+                await ws.send_text(protocol.encode(
+                    protocol.init_message(**snap)))
+                clients.add(ws)
         except WebSocketDisconnect:
             return
-        clients.add(ws)
         try:
             while True:
                 raw = await ws.receive_text()
