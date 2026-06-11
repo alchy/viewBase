@@ -1,6 +1,8 @@
 import { Connection } from './core/connection.js';
 import { GraphStore } from './core/store.js';
 import { StatusOverlay } from './core/status.js';
+import { Picker, buildEvent } from './interact/picking.js';
+import { throttle } from './interact/throttle.js';
 import { PhysicsEngine } from './physics/engine.js';
 import { Renderer } from './render/renderer.js';
 
@@ -39,6 +41,16 @@ function bootstrap() {
       }
     },
   });
+
+  new Picker(renderer.webgl.domElement,
+    (x, y) => renderer.pick(x, y),
+    (message) => connection.send(message));
+
+  const sendViewChange = throttle(() => {
+    const state = renderer.viewState();
+    if (state) connection.send(buildEvent('view_change', state));
+  }, 100);
+  renderer.controls.addEventListener('change', sendViewChange);
 
   connection.connect();
   renderer.start();

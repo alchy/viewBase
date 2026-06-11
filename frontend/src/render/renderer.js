@@ -43,6 +43,8 @@ export class Renderer {
 
     this.clock = new THREE.Clock();
     this._matrix = new THREE.Matrix4();
+    this.raycaster = new THREE.Raycaster();
+    this._pointer = new THREE.Vector2();
 
     window.addEventListener('resize', () => {
       this.camera.aspect = container.clientWidth / container.clientHeight;
@@ -129,6 +131,31 @@ export class Renderer {
     }
     this.nodeMesh.count = count;
     this.nodeMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Vrátí id uzlu pod souřadnicemi obrazovky, nebo null.
+   *  instanceId odpovídá pořadí v engine.ids – stejné jako v _syncNodes. */
+  pick(clientX, clientY) {
+    if (!this.camera || !this.nodeMesh || this.nodeMesh.count === 0) return null;
+    const rect = this.webgl.domElement.getBoundingClientRect();
+    this._pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this._pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this._pointer, this.camera);
+    const hit = this.raycaster.intersectObject(this.nodeMesh)[0];
+    if (!hit || hit.instanceId === undefined) return null;
+    return this.engine.ids[hit.instanceId] ?? null;
+  }
+
+  /** Stav pohledu pro view_change event; null dokud kamera neexistuje. */
+  viewState() {
+    if (!this.camera || !this.controls) return null;
+    const p = this.camera.position;
+    const t = this.controls.target;
+    return {
+      position: { x: p.x, y: p.y, z: p.z },
+      target: { x: t.x, y: t.y, z: t.z },
+      zoom: this.camera.zoom,
+    };
   }
 
   _syncEdges() {
