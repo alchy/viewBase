@@ -79,6 +79,12 @@ class Canvas:
         with self._lock:
             if node_id not in self._nodes:
                 raise ValueError(f"Uzel '{node_id}' neexistuje")
+            for reserved in ("label", "type"):
+                if reserved in meta:
+                    raise ValueError(
+                        f"update_node neumí měnit '{reserved}' – label šablona"
+                        " a typ se zadávají v add_node (změna za běhu přijde"
+                        " v Plánu 2b)")
             node = self._nodes[node_id]
             node["meta"].update(meta)
             payload = self._public_node(node)

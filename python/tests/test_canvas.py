@@ -101,3 +101,12 @@ def test_snapshot_is_isolated_from_internal_state():
     snap["config"]["title"] = "hacked"
     assert c.snapshot()["edges"][0]["meta"]["weight"] == 1
     assert c.snapshot()["config"]["title"] == "viewbase"
+
+
+def test_update_node_rejects_label_and_type_keys():
+    c = Canvas()
+    c.add_node("a")
+    with pytest.raises(ValueError, match="label"):
+        c.update_node("a", label="X")
+    with pytest.raises(ValueError, match="type"):
+        c.update_node("a", type="server")
