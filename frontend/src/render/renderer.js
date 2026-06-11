@@ -70,6 +70,7 @@ export class Renderer {
   /** Kamera + controls podle config.dimensions. Volá se jen jednou – změna
    *  dimenzí za běhu serveru vyžaduje obnovení stránky. */
   _initCamera(dimensions) {
+    if (this.camera) return;   // idempotence – reconnect nesmí duplikovat controls/listenery
     const aspect = this.container.clientWidth / this.container.clientHeight;
     if (dimensions === 2) {
       this.camera = new THREE.OrthographicCamera(
