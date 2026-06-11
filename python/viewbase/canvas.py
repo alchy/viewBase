@@ -4,8 +4,10 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import types
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 logger = logging.getLogger("viewbase")
 
@@ -37,6 +39,9 @@ class Canvas:
         self._seq = 0
         self._batch_depth = 0
         self._pending = self._empty_pending()
+        self._handlers: dict[str, list[Callable[[Any], None]]] = {}
+        self._executor = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="viewbase-handler")
 
     @staticmethod
     def _empty_pending() -> dict[str, dict]:
@@ -192,3 +197,44 @@ class Canvas:
             self._pending = self._empty_pending()
             self._seq += 1
             return self._seq, deltas
+
+    # ---- eventy ----------------------------------------------------------
+
+    def on_click(self, func: Callable[[Any], None]) -> Callable[[Any], None]:
+        return self._register("node_click", func)
+
+    def on_hover(self, func: Callable[[Any], None]) -> Callable[[Any], None]:
+        return self._register("node_hover", func)
+
+    def on_background_click(
+            self, func: Callable[[Any], None]) -> Callable[[Any], None]:
+        return self._register("background_click", func)
+
+    def on_view_change(
+            self, func: Callable[[Any], None]) -> Callable[[Any], None]:
+        return self._register("view_change", func)
+
+    def _register(self, event: str,
+                  func: Callable[[Any], None]) -> Callable[[Any], None]:
+        with self._lock:
+            self._handlers.setdefault(event, []).append(func)
+        return func
+
+    def dispatch_event(self, name: str, payload: dict[str, Any]) -> None:
+        """Spustí handlery eventu ve sdíleném thread-poolu (smí blokovat).
+        Neznámý event je no-op; výjimka handleru se zaloguje, server běží dál."""
+        with self._lock:
+            handlers = list(self._handlers.get(name, ()))
+        if not handlers:
+            return
+        event = types.SimpleNamespace(**payload)
+        for handler in handlers:
+            self._executor.submit(self._run_handler, handler, name, event)
+
+    @staticmethod
+    def _run_handler(handler: Callable[[Any], None], name: str,
+                     event: types.SimpleNamespace) -> None:
+        try:
+            handler(event)
+        except Exception:
+            logger.exception("Výjimka v handleru eventu '%s'", name)
