@@ -4,33 +4,33 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const NODE_COLOR = 0x2f7fe8;
 const EDGE_COLOR = 0x9aa3af;
 const BACKGROUND = 0xf4f5f7;
-const SMOOTHING = 8;   // 1/s – rychlost dobíhání zobrazené pozice k fyzice
-const DIM_TOWARD_BG = 0.75;  // ztlumené uzly: 75 % cesty k barvě pozadí
-const FOCUS_DURATION = 0.6;  // s – dolet kamery na uzel
+const SMOOTHING = 8;            // 1/s – rychlost dobíhání zobrazené pozice k fyzice
+const DIM_TOWARD_BG = 0.75;     // ztlumené uzly: 75 % cesty k barvě pozadí
+const FOCUS_DURATION = 0.6;     // s – dolet kamery na uzel
+const ORTHO_HALF_HEIGHT = 600;  // světové jednotky – polovina výšky 2D pohledu
 
 /** Instancovaný renderer: jeden InstancedMesh pro uzly, jeden LineSegments
- *  pro hrany. Zobrazené pozice se vyhlazují exponenciálně mezi fyz. ticky. */
+ *  pro hrany. Zobrazené pozice se vyhlazují exponenciálně mezi fyz. ticky.
+ *  Kamera a controls vznikají lazy při prvním 'init' eventu ze store
+ *  (config.dimensions: 3 = perspektivní orbit, 2 = ortografický pan/zoom);
+ *  do té doby se nerendruje (guard v _frame). */
 export class Renderer {
-  constructor(container, store, engine) {
+  constructor(container, store, engine, { onCameraReady = () => {} } = {}) {
+    this.container = container;
     this.store = store;
     this.engine = engine;
+    this.onCameraReady = onCameraReady;
     this.display = new Map();   // id -> THREE.Vector3 (vyhlazená pozice)
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(BACKGROUND);
-    this.camera = new THREE.PerspectiveCamera(
-      60, container.clientWidth / container.clientHeight, 1, 50000);
-    this.camera.position.set(0, 0, 900);
+    this.camera = null;         // vznikne v _initCamera po initu
+    this.controls = null;
 
     this.webgl = new THREE.WebGLRenderer({ antialias: true });
     this.webgl.setSize(container.clientWidth, container.clientHeight);
     this.webgl.setPixelRatio(window.devicePixelRatio);
     container.appendChild(this.webgl.domElement);
-
-    this.controls = new OrbitControls(this.camera, this.webgl.domElement);
-    this.controls.enableDamping = true;
-    this.controls.minDistance = 20;
-    this.controls.maxDistance = 20000;   // bezpečně před far plane (50000)
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const sun = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -58,11 +58,56 @@ export class Renderer {
     this.focusElapsed = 0;
     this._focusFrom = new THREE.Vector3();
 
-    window.addEventListener('resize', () => {
-      this.camera.aspect = container.clientWidth / container.clientHeight;
-      this.camera.updateProjectionMatrix();
-      this.webgl.setSize(container.clientWidth, container.clientHeight);
+    store.subscribe((event) => {
+      if (event.kind === 'init' && !this.camera) {
+        this._initCamera(store.config.dimensions);
+      }
     });
+
+    window.addEventListener('resize', () => this._onResize());
+  }
+
+  /** Kamera + controls podle config.dimensions. Volá se jen jednou – změna
+   *  dimenzí za běhu serveru vyžaduje obnovení stránky. */
+  _initCamera(dimensions) {
+    const aspect = this.container.clientWidth / this.container.clientHeight;
+    if (dimensions === 2) {
+      this.camera = new THREE.OrthographicCamera(
+        -ORTHO_HALF_HEIGHT * aspect, ORTHO_HALF_HEIGHT * aspect,
+        ORTHO_HALF_HEIGHT, -ORTHO_HALF_HEIGHT, -10000, 10000);
+      this.camera.position.set(0, 0, 1000);
+      this.controls = new OrbitControls(this.camera, this.webgl.domElement);
+      this.controls.enableDamping = true;
+      this.controls.enableRotate = false;
+      this.controls.screenSpacePanning = true;
+      this.controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN,
+      };
+      this.controls.touches = {
+        ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN,
+      };
+    } else {
+      this.camera = new THREE.PerspectiveCamera(60, aspect, 1, 50000);
+      this.camera.position.set(0, 0, 900);
+      this.controls = new OrbitControls(this.camera, this.webgl.domElement);
+      this.controls.enableDamping = true;
+      this.controls.minDistance = 20;
+      this.controls.maxDistance = 20000;   // bezpečně před far plane (50000)
+    }
+    this.onCameraReady();
+  }
+
+  _onResize() {
+    this.webgl.setSize(this.container.clientWidth, this.container.clientHeight);
+    if (!this.camera) return;
+    const aspect = this.container.clientWidth / this.container.clientHeight;
+    if (this.camera.isOrthographicCamera) {
+      this.camera.left = -ORTHO_HALF_HEIGHT * aspect;
+      this.camera.right = ORTHO_HALF_HEIGHT * aspect;
+    } else {
+      this.camera.aspect = aspect;
+    }
+    this.camera.updateProjectionMatrix();
   }
 
   _ensureNodeCapacity(count) {
@@ -75,6 +120,8 @@ export class Renderer {
       this.nodeMesh.dispose();
     }
     const geometry = new THREE.SphereGeometry(3, 12, 8);
+    // Barvu nese per-instance atribut (highlight) – materiál je bílý,
+    // shader násobí material.color * instanceColor.
     const material = new THREE.MeshStandardMaterial(
       { color: 0xffffff, roughness: 0.4 });
     this.nodeMesh = new THREE.InstancedMesh(geometry, material, capacity);
@@ -109,6 +156,7 @@ export class Renderer {
 
   _frame() {
     const dt = this.clock.getDelta();
+    if (!this.camera) return;       // čekáme na init (config.dimensions)
     this._syncNodes(dt);
     this._syncEdges();
     this._stepFocus(dt);
@@ -148,6 +196,23 @@ export class Renderer {
     this.nodeMesh.count = count;
     this.nodeMesh.instanceMatrix.needsUpdate = true;
     if (this.nodeMesh.instanceColor) this.nodeMesh.instanceColor.needsUpdate = true;
+  }
+
+  _syncEdges() {
+    const { edges } = this.store;
+    this._ensureEdgeCapacity(edges.size);
+    const attr = this.edgeLines.geometry.getAttribute('position');
+    let i = 0;
+    for (const edge of edges.values()) {
+      const a = this.display.get(edge.source);
+      const b = this.display.get(edge.target);
+      if (!a || !b) continue;
+      attr.setXYZ(i * 2, a.x, a.y, a.z);
+      attr.setXYZ(i * 2 + 1, b.x, b.y, b.z);
+      i += 1;
+    }
+    this.edgeLines.geometry.setDrawRange(0, i * 2);
+    attr.needsUpdate = true;
   }
 
   /** Vrátí id uzlu pod souřadnicemi obrazovky, nebo null.
@@ -204,22 +269,5 @@ export class Renderer {
     const eased = 1 - (1 - t) ** 3;              // easeOutCubic
     this.controls.target.lerpVectors(this._focusFrom, pos, eased);
     if (t >= 1) this.focusId = null;
-  }
-
-  _syncEdges() {
-    const { edges } = this.store;
-    this._ensureEdgeCapacity(edges.size);
-    const attr = this.edgeLines.geometry.getAttribute('position');
-    let i = 0;
-    for (const edge of edges.values()) {
-      const a = this.display.get(edge.source);
-      const b = this.display.get(edge.target);
-      if (!a || !b) continue;
-      attr.setXYZ(i * 2, a.x, a.y, a.z);
-      attr.setXYZ(i * 2 + 1, b.x, b.y, b.z);
-      i += 1;
-    }
-    this.edgeLines.geometry.setDrawRange(0, i * 2);
-    attr.needsUpdate = true;
   }
 }

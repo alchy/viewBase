@@ -24,14 +24,7 @@ function webglAvailable() {
 function bootstrap() {
   const store = new GraphStore();
   const engine = new PhysicsEngine(store);
-  const renderer = new Renderer(document.getElementById('app'), store, engine);
   const detail = new DetailBox();
-
-  store.subscribe((event) => {
-    if (event.kind === 'init' && store.config.title) {
-      document.title = `${store.config.title} – viewbase`;
-    }
-  });
 
   function applyHighlight(nodeId, depth) {
     const levels = depth ?? store.config.highlight_neighbors ?? 1;
@@ -42,6 +35,37 @@ function bootstrap() {
     const node = store.nodes.get(nodeId);
     if (node) detail.show({ label: node.label, meta: node.meta });
   }
+
+  const renderer = new Renderer(document.getElementById('app'), store, engine, {
+    onCameraReady: () => {
+      new Picker(renderer.webgl.domElement,
+        (x, y) => renderer.pick(x, y),
+        (message) => connection.send(message), {
+          onNodeClick: (id) => {              // okamžitá lokální odezva
+            const levels = store.config.highlight_neighbors ?? 1;
+            if (levels > 0) applyHighlight(id, levels);
+            renderer.focusOn(id);
+          },
+          onBackgroundClick: () => {
+            renderer.setHighlight(null);
+            detail.hide();
+          },
+        });
+      new KeyboardControls(renderer.camera, renderer.controls,
+        { is2d: store.config.dimensions === 2 });
+      const sendViewChange = throttle(() => {
+        const state = renderer.viewState();
+        if (state) connection.send(buildEvent('view_change', state));
+      }, 100);
+      renderer.controls.addEventListener('change', sendViewChange);
+    },
+  });
+
+  store.subscribe((event) => {
+    if (event.kind === 'init' && store.config.title) {
+      document.title = `${store.config.title} – viewbase`;
+    }
+  });
 
   const actions = {
     show_detail: (msg) => showDetail(msg.node_id),
@@ -67,27 +91,6 @@ function bootstrap() {
       else console.warn('viewbase: neznámá akce', msg.action);
     },
   });
-
-  new Picker(renderer.webgl.domElement,
-    (x, y) => renderer.pick(x, y),
-    (message) => connection.send(message), {
-      onNodeClick: (id) => {                  // okamžitá lokální odezva
-        const levels = store.config.highlight_neighbors ?? 1;
-        if (levels > 0) applyHighlight(id, levels);
-        renderer.focusOn(id);
-      },
-      onBackgroundClick: () => {
-        renderer.setHighlight(null);
-        detail.hide();
-      },
-    });
-
-  const sendViewChange = throttle(() => {
-    const state = renderer.viewState();
-    if (state) connection.send(buildEvent('view_change', state));
-  }, 100);
-  renderer.controls.addEventListener('change', sendViewChange);
-  new KeyboardControls(renderer.camera, renderer.controls);
 
   connection.connect();
   renderer.start();
