@@ -6,9 +6,11 @@ export class DetailBox {
     this.el.style.cssText = [
       'position:fixed', 'top:16px', 'right:16px', 'min-width:220px',
       'max-width:320px', 'padding:12px 14px', 'border-radius:8px',
-      'background:rgba(255,255,255,0.95)', 'color:#1f2430',
+      'background:var(--vb-detail-bg, rgba(255,255,255,0.95))',
+      'color:var(--vb-detail-fg, #1f2430)',
       'font:13px/1.5 system-ui,sans-serif',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.18)', 'z-index:900', 'display:none',
+      'box-shadow:var(--vb-detail-shadow, 0 4px 16px rgba(0,0,0,0.18))',
+      'z-index:900', 'display:none',
     ].join(';');
     container.appendChild(this.el);
   }
@@ -19,7 +21,8 @@ export class DetailBox {
     const close = document.createElement('button');
     close.textContent = '×';
     close.style.cssText = 'position:absolute;top:6px;right:8px;border:0;'
-      + 'background:none;font-size:16px;cursor:pointer;color:#666';
+      + 'background:none;font-size:16px;cursor:pointer;'
+      + 'color:var(--vb-detail-key, #666)';
     close.addEventListener('click', () => this.hide());
     this.el.appendChild(close);
 
@@ -34,7 +37,8 @@ export class DetailBox {
       const row = table.insertRow();
       const keyCell = row.insertCell();
       keyCell.textContent = key;
-      keyCell.style.cssText = 'padding:2px 10px 2px 0;color:#667;vertical-align:top';
+      keyCell.style.cssText = 'padding:2px 10px 2px 0;vertical-align:top;'
+        + 'color:var(--vb-detail-key, #667788)';
       row.insertCell().textContent = String(value);
     }
     this.el.appendChild(table);

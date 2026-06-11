@@ -1,9 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { resolveTheme } from '../themes/manager.js';
 
-const NODE_COLOR = 0x2f7fe8;
-const EDGE_COLOR = 0x9aa3af;
-const BACKGROUND = 0xf4f5f7;
 const SMOOTHING = 8;            // 1/s – rychlost dobíhání zobrazené pozice k fyzice
 const DIM_TOWARD_BG = 0.75;     // ztlumené uzly: 75 % cesty k barvě pozadí
 const FOCUS_DURATION = 0.6;     // s – dolet kamery na uzel
@@ -22,8 +20,9 @@ export class Renderer {
     this.onCameraReady = onCameraReady;
     this.display = new Map();   // id -> THREE.Vector3 (vyhlazená pozice)
 
+    this.theme = resolveTheme('modern');   // než dorazí init, jede základ
+
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(BACKGROUND);
     this.camera = null;         // vznikne v _initCamera po initu
     this.controls = null;
 
@@ -32,10 +31,11 @@ export class Renderer {
     this.webgl.setPixelRatio(window.devicePixelRatio);
     container.appendChild(this.webgl.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-    sun.position.set(1, 2, 3);
-    this.scene.add(sun);
+    this.ambient = new THREE.AmbientLight();
+    this.scene.add(this.ambient);
+    this.sun = new THREE.DirectionalLight();
+    this.sun.position.set(1, 2, 3);
+    this.scene.add(this.sun);
 
     this.nodeCapacity = 0;
     this.nodeMesh = null;
@@ -51,9 +51,9 @@ export class Renderer {
     this._pointer = new THREE.Vector2();
 
     this.highlightSet = null;   // Set id | null = bez zvýraznění
-    this._fullColor = new THREE.Color(NODE_COLOR);
-    this._dimColor = new THREE.Color(NODE_COLOR)
-      .lerp(new THREE.Color(BACKGROUND), DIM_TOWARD_BG);
+    this._fullColor = new THREE.Color();
+    this._dimColor = new THREE.Color();
+    this.applyTheme(this.theme);          // pozadí, světla, materiály, barvy
     this.focusId = null;        // id uzlu, ke kterému letí kamera
     this.focusElapsed = 0;
     this._focusFrom = new THREE.Vector3();
@@ -65,6 +65,23 @@ export class Renderer {
     });
 
     window.addEventListener('resize', () => this._onResize());
+  }
+
+  /** Přepne aktivní téma za běhu: pozadí, světla, hrany, materiály uzlů. */
+  applyTheme(theme) {
+    this.theme = theme;
+    this.scene.background = new THREE.Color(theme.background);
+    this.ambient.color.set(theme.lights.ambient.color);
+    this.ambient.intensity = theme.lights.ambient.intensity;
+    this.sun.color.set(theme.lights.directional.color);
+    this.sun.intensity = theme.lights.directional.intensity;
+    this.edgeLines.material.color.set(theme.edge.color);
+    this.edgeLines.material.opacity = theme.edge.opacity;
+    this.nodeMesh.material.emissive.set(theme.node.emissive);
+    this.nodeMesh.material.emissiveIntensity = theme.node.emissiveIntensity;
+    this._fullColor.set(theme.node.color);
+    this._dimColor.copy(this._fullColor)
+      .lerp(new THREE.Color(theme.background), DIM_TOWARD_BG);
   }
 
   /** Kamera + controls podle config.dimensions. Volá se jen jednou – změna
@@ -123,8 +140,12 @@ export class Renderer {
     const geometry = new THREE.SphereGeometry(3, 12, 8);
     // Barvu nese per-instance atribut (highlight) – materiál je bílý,
     // shader násobí material.color * instanceColor.
-    const material = new THREE.MeshStandardMaterial(
-      { color: 0xffffff, roughness: 0.4 });
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.4,
+      emissive: new THREE.Color(this.theme.node.emissive),
+      emissiveIntensity: this.theme.node.emissiveIntensity,
+    });
     this.nodeMesh = new THREE.InstancedMesh(geometry, material, capacity);
     this.nodeMesh.count = 0;
     this.scene.add(this.nodeMesh);
@@ -144,8 +165,11 @@ export class Renderer {
       new THREE.BufferAttribute(new Float32Array(capacity * 6), 3));
     geometry.setDrawRange(0, 0);
     this.edgeLines = new THREE.LineSegments(geometry,
-      new THREE.LineBasicMaterial(
-        { color: EDGE_COLOR, transparent: true, opacity: 0.5 }));
+      new THREE.LineBasicMaterial({
+        color: this.theme.edge.color,
+        transparent: true,
+        opacity: this.theme.edge.opacity,
+      }));
     this.edgeLines.frustumCulled = false;
     this.scene.add(this.edgeLines);
     this.edgeCapacity = capacity;

@@ -8,6 +8,7 @@ import { Picker, buildEvent } from './interact/picking.js';
 import { throttle } from './interact/throttle.js';
 import { PhysicsEngine } from './physics/engine.js';
 import { Renderer } from './render/renderer.js';
+import { applyCssVars, resolveTheme } from './themes/manager.js';
 
 const status = new StatusOverlay();
 
@@ -63,8 +64,16 @@ function bootstrap() {
     },
   });
 
+  function applyTheme(nameOrDict) {
+    const theme = resolveTheme(nameOrDict);
+    renderer.applyTheme(theme);
+    applyCssVars(theme);
+  }
+
   store.subscribe((event) => {
-    if (event.kind === 'init' && store.config.title) {
+    if (event.kind !== 'init') return;
+    applyTheme(store.config.theme);
+    if (store.config.title) {
       document.title = `${store.config.title} – viewbase`;
     }
   });
@@ -73,7 +82,10 @@ function bootstrap() {
     show_detail: (msg) => showDetail(msg.node_id),
     focus: (msg) => renderer.focusOn(msg.node_id),
     highlight: (msg) => applyHighlight(msg.node_id, msg.depth),
-    set_theme: (msg) => { store.config.theme = msg.theme; },  // vizuál v Plánu 2b
+    set_theme: (msg) => {
+      store.config.theme = msg.theme;     // reconnect → init už ponese nové téma
+      applyTheme(msg.theme);
+    },
   };
 
   const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';

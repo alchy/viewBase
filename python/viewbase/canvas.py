@@ -13,6 +13,21 @@ logger = logging.getLogger("viewbase")
 
 _LABEL_KEY = re.compile(r"\{([^{}]+)\}")
 
+BUILTIN_THEMES = ("modern", "cyber")
+
+
+def _validated_theme(theme: Any) -> Any:
+    """Název vestavěného tématu, nebo dict (klient ho merguje přes modern)."""
+    if isinstance(theme, str):
+        if theme not in BUILTIN_THEMES:
+            raise ValueError(
+                f"Neznámé téma '{theme}' – vestavěná: {', '.join(BUILTIN_THEMES)};"
+                " vlastní téma předej jako dict")
+        return theme
+    if isinstance(theme, dict):
+        return theme
+    raise ValueError("theme musí být název vestavěného tématu nebo dict")
+
 
 def _edge_key(source: str, target: str) -> tuple[str, str]:
     """Neorientovaná hrana má kanonický klíč: lexikograficky seřazenou dvojici."""
@@ -23,13 +38,13 @@ class Canvas:
     """Thread-safe model grafu. Mutace se hromadí jako delty pro server."""
 
     def __init__(self, *, title: str = "viewbase", dimensions: int = 3,
-                 theme: str = "modern", highlight_neighbors: int = 1):
+                 theme: Any = "modern", highlight_neighbors: int = 1):
         if dimensions not in (2, 3):
             raise ValueError("dimensions musí být 2 nebo 3")
         self.config = {
             "title": title,
             "dimensions": dimensions,
-            "theme": theme,
+            "theme": _validated_theme(theme),
             "highlight_neighbors": highlight_neighbors,
         }
         self._lock = threading.RLock()
@@ -264,8 +279,8 @@ class Canvas:
                 {"action": "highlight", "node_id": node_id, "depth": depth})
 
     def set_theme(self, theme: Any) -> None:
-        """Přepne téma. Vizuální zpracování přijde v Plánu 2b – klient si
-        hodnotu zatím jen uloží do configu."""
+        """Přepne téma za běhu (vestavěné jméno nebo dict) a pošle akci."""
+        theme = _validated_theme(theme)
         with self._lock:
             self.config["theme"] = theme
             self._actions.append({"action": "set_theme", "theme": theme})

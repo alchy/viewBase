@@ -6,7 +6,8 @@ export class StatusOverlay {
     this.el.style.cssText = [
       'position:fixed', 'top:16px', 'left:50%', 'transform:translateX(-50%)',
       'max-width:70%', 'padding:10px 18px', 'border-radius:6px',
-      'background:rgba(20,23,28,0.85)', 'color:#fff',
+      'background:var(--vb-status-bg, rgba(20,23,28,0.85))',
+      'color:var(--vb-status-fg, #ffffff)',
       'font:14px/1.4 system-ui,sans-serif', 'z-index:1000',
       'display:none', 'pointer-events:none', 'text-align:center',
     ].join(';');
