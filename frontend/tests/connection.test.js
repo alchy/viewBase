@@ -72,4 +72,33 @@ describe('Connection', () => {
     FakeWebSocket.instances.at(-1).close();
     expect(scheduled[1].delay).toBe(1000);        // backoff ×2
   });
+
+  it('protocol_mismatch zastaví reconnect a ohlásí stav', () => {
+    const statuses = [];
+    const conn = new Connection('ws://x/ws', store,
+      { WebSocketImpl: FakeWebSocket, schedule, onStatus: (s) => statuses.push(s) });
+    conn.connect();
+    const ws = FakeWebSocket.instances.at(-1);
+    ws.open();
+    ws.message({ type: 'error', error: 'protocol_mismatch' });
+    ws.close();                                   // server spojení zavře
+    expect(statuses).toEqual(['protocol_mismatch']);
+    expect(scheduled).toHaveLength(0);            // žádný reconnect
+  });
+
+  it('hlásí close při výpadku a init po obnově', () => {
+    const statuses = [];
+    const conn = new Connection('ws://x/ws', store,
+      { WebSocketImpl: FakeWebSocket, schedule, onStatus: (s) => statuses.push(s) });
+    conn.connect();
+    let ws = FakeWebSocket.instances.at(-1);
+    ws.open();
+    ws.message(initMsg);
+    ws.close();
+    scheduled[0].fn();                            // naplánovaný reconnect
+    ws = FakeWebSocket.instances.at(-1);
+    ws.open();
+    ws.message(initMsg);
+    expect(statuses).toEqual(['init', 'close', 'init']);
+  });
 });

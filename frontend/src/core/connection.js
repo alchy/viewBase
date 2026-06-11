@@ -1,12 +1,14 @@
 import { decode, encode, hello } from './protocol.js';
 
-/** WebSocket klient: handshake, routing zpráv do store, reconnect s backoffem. */
+/** WebSocket klient: handshake, routing zpráv do store, reconnect s backoffem.
+ *  Stavy hlásí přes onStatus('init' | 'close' | 'protocol_mismatch'). */
 export class Connection {
   constructor(url, store, {
     WebSocketImpl = globalThis.WebSocket,
     schedule = (fn, delay) => setTimeout(fn, delay),
     minBackoff = 500,
     maxBackoff = 10000,
+    onStatus = () => {},
   } = {}) {
     this.url = url;
     this.store = store;
@@ -15,6 +17,8 @@ export class Connection {
     this.minBackoff = minBackoff;
     this.maxBackoff = maxBackoff;
     this.backoff = minBackoff;
+    this.onStatus = onStatus;
+    this.stopped = false;   // po protocol_mismatch se už nereconnectuje
     this.ws = null;
   }
 
@@ -27,6 +31,8 @@ export class Connection {
     };
     ws.onmessage = (event) => this._onMessage(event.data);
     ws.onclose = () => {
+      if (this.stopped) return;   // mismatch: uživatel už vidí výzvu k F5
+      this.onStatus('close');
       this.schedule(() => this.connect(), this.backoff);
       this.backoff = Math.min(this.backoff * 2, this.maxBackoff);
     };
@@ -42,10 +48,15 @@ export class Connection {
     }
     if (msg.type === 'init') {
       this.store.applyInit(msg);
+      this.onStatus('init');
     } else if (msg.type === 'patch') {
       if (!this.store.applyPatch(msg)) this.ws.close();  // mezera v seq
     } else if (msg.type === 'error') {
       console.error('viewbase server:', msg.error);
+      if (msg.error === 'protocol_mismatch') {
+        this.stopped = true;
+        this.onStatus('protocol_mismatch');
+      }
     }
   }
 
