@@ -8,8 +8,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "d3-force-3d": "^3.0.5",
     "three": "^0.165.0",
-    "d3-force-3d": "^3.0.5"
+    "troika-three-text": "^0.52.4"
   },
   "devDependencies": {
     "vite": "^5.2.0",

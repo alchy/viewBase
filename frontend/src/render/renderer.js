@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { resolveTheme } from '../themes/manager.js';
 import { nodeStyle } from './style.js';
+import { LabelLayer } from './labels.js';
 
 const SMOOTHING = 8;            // 1/s – rychlost dobíhání zobrazené pozice k fyzice
 const DIM_TOWARD_BG = 0.75;     // ztlumené uzly: 75 % cesty k barvě pozadí
@@ -68,6 +69,7 @@ export class Renderer {
     this.focusElapsed = 0;
     this._focusFrom = new THREE.Vector3();
 
+    this.labels = new LabelLayer(this.scene, store, engine);
     this.applyTheme(this.theme);
 
     store.subscribe((event) => {
@@ -96,6 +98,7 @@ export class Renderer {
       mesh.material.emissive.set(theme.node.emissive);
       mesh.material.emissiveIntensity = theme.node.emissiveIntensity;
     }
+    this.labels.applyTheme(theme);
   }
 
   /** Kamera + controls podle config.dimensions. Volá se jen jednou – změna
@@ -207,6 +210,7 @@ export class Renderer {
     this.frameIndex += 1;           // invalidace memoizace bounding sphere
     this._syncNodes(dt);
     this._syncEdges();
+    this.labels.update(dt, this.camera, this.highlightSet, this.display);
     this._stepFocus(dt);
     this.controls.update();
     this.webgl.render(this.scene, this.camera);
