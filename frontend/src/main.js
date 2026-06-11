@@ -3,6 +3,7 @@ import { GraphStore } from './core/store.js';
 import { StatusOverlay } from './core/status.js';
 import { DetailBox } from './interact/detail.js';
 import { neighborhood } from './interact/highlight.js';
+import { KeyboardControls } from './interact/keyboard.js';
 import { Picker, buildEvent } from './interact/picking.js';
 import { throttle } from './interact/throttle.js';
 import { PhysicsEngine } from './physics/engine.js';
@@ -86,6 +87,7 @@ function bootstrap() {
     if (state) connection.send(buildEvent('view_change', state));
   }, 100);
   renderer.controls.addEventListener('change', sendViewChange);
+  new KeyboardControls(renderer.camera, renderer.controls);
 
   connection.connect();
   renderer.start();
