@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GraphStore } from '../src/core/store.js';
 
 const initMsg = (over = {}) => ({
@@ -68,5 +68,17 @@ describe('GraphStore', () => {
     store.applyInit(initMsg());
     store.applyPatch(patchMsg(1));
     expect(events).toEqual(['init', 'patch']);
+  });
+
+  it('add_edge s chybějícím koncem se přeskočí s console.warn', () => {
+    const store = new GraphStore();
+    store.applyInit(initMsg());
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    store.applyPatch(patchMsg(1, {
+      add_edges: [{ source: 'a', target: 'ghost', meta: {} }],
+    }));
+    expect(store.edges.size).toBe(1);    // jen původní a–b
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 });

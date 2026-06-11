@@ -54,7 +54,11 @@ export class GraphStore {
     for (const node of msg.add_nodes) this.nodes.set(node.id, node);
     for (const node of msg.update_nodes) this.nodes.set(node.id, node);
     for (const edge of msg.add_edges) {
-      if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) continue;
+      if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
+        console.warn('viewbase: hrana s neznámým koncem přeskočena',
+          edge.source, edge.target);
+        continue;
+      }
       this.edges.set(GraphStore.edgeKey(edge.source, edge.target), edge);
     }
     this.seq = msg.seq;
