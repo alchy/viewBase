@@ -83,13 +83,12 @@ def create_app(canvas: Canvas) -> FastAPI:
                     {"type": "error", "error": "protocol_mismatch"}))
                 await ws.close()
                 return
-            # Sdílený zámek: snapshot + zařazení mezi klienty musí být atomické
-            # vůči broadcast kroku, jinak novému klientovi uteče patch (mezera
-            # v seq hned po připojení).
+            # Sdílený zámek: snapshot + zařazení mezi klienty je atomické vůči
+            # broadcast kroku. Pending delty se NEzahazují – příští broadcast
+            # je pošle všem (novému klientovi jako idempotentní upsert), takže
+            # seq navazuje pro staré i nové klienty.
             async with state_lock:
                 snap = canvas.snapshot()
-                canvas.drain()          # zahodit delty pokryté snapshotem
-                canvas.drain_actions()  # zahodit akce vzniklé před připojením
                 await ws.send_text(protocol.encode(
                     protocol.init_message(**snap)))
                 clients.add(ws)

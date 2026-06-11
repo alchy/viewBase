@@ -88,3 +88,34 @@ def test_invalid_message_keeps_connection_alive():
             ws.send_text(protocol.encode(
                 {"type": "event", "event": "background_click"}))
             assert done.wait(timeout=2)
+
+
+def test_connect_during_pending_mutations_keeps_all_clients_in_sync():
+    canvas = Canvas()
+    with make_client(canvas) as client:
+        with client.websocket_connect("/ws") as ws1:
+            ws1.send_text(hello())
+            init1 = protocol.decode(ws1.receive_text())
+            assert init1["type"] == "init"
+
+            # Přidej "a" a počkej, až ho ws1 dostane patchem – tím zajistíme,
+            # že broadcast stihl drainovat před batchem.
+            canvas.add_node("a")
+            patch_a = protocol.decode(ws1.receive_text())
+            assert patch_a["type"] == "patch"
+            seq_after_a = patch_a["seq"]
+
+            with canvas.batch():
+                canvas.add_node("x")          # delta držená batchem
+                with client.websocket_connect("/ws") as ws2:
+                    ws2.send_text(hello())
+                    init2 = protocol.decode(ws2.receive_text())
+                    # snapshot obsahuje uzly a i x (jsou ve stavu),
+                    # seq se drainem nepohnul – batch drží deltu pro x
+                    assert {n["id"] for n in init2["nodes"]} == {"a", "x"}
+                    assert init2["seq"] == seq_after_a
+            # batch skončil: broadcast smyčka drainuje seq+1 a pošle ws1
+            msg1 = protocol.decode(ws1.receive_text())
+            assert msg1["type"] == "patch"
+            assert msg1["seq"] == seq_after_a + 1
+            assert [n["id"] for n in msg1["add_nodes"]] == ["x"]

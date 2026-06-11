@@ -59,7 +59,12 @@ def test_action_is_delivered_over_ws():
                 {"type": "hello", "protocol": protocol.PROTOCOL_VERSION}))
             assert protocol.decode(ws.receive_text())["type"] == "init"
             canvas.show_detail("a")
-            msg = protocol.decode(ws.receive_text())
+            # Před akcí může přijít patch (pending delta add_node "a") – přeskočit
+            msg = None
+            for _ in range(5):
+                msg = protocol.decode(ws.receive_text())
+                if msg["type"] == "action":
+                    break
             assert msg == {"type": "action", "action": "show_detail",
                            "node_id": "a"}
 
