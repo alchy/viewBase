@@ -23,9 +23,12 @@ PATCH_INTERVAL = 1 / 30
 
 
 async def _broadcast_step(canvas: Canvas, clients: set[WebSocket]) -> None:
-    """Jeden krok vysílání: nejdřív patch (data), pak akce (odkazují na data)."""
-    drained = canvas.drain()
+    """Jeden krok vysílání: nejdřív patch (data), pak akce (odkazují na data).
+
+    Akce se drainují PŘED deltami: _require_node zaručuje, že uzel akce byl
+    přidán dřív, takže jeho delta je v tomto (nebo dřívějším) patchi."""
     actions = canvas.drain_actions()
+    drained = canvas.drain()
     messages = []
     if drained is not None:
         seq, deltas = drained

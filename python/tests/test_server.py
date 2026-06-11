@@ -90,32 +90,27 @@ def test_invalid_message_keeps_connection_alive():
             assert done.wait(timeout=2)
 
 
-def test_connect_during_pending_mutations_keeps_all_clients_in_sync():
+def test_handshake_nezahazuje_pending_delty(monkeypatch):
+    from viewbase import server as server_module
+    # Uspat broadcast smyčku, ať delty zůstanou pending po celou dobu testu
+    monkeypatch.setattr(server_module, "PATCH_INTERVAL", 1000)
     canvas = Canvas()
+    canvas.add_node("a")
+    canvas.drain()                                    # "a" drainujeme předem – baseline
     with make_client(canvas) as client:
         with client.websocket_connect("/ws") as ws1:
             ws1.send_text(hello())
             init1 = protocol.decode(ws1.receive_text())
-            assert init1["type"] == "init"
-
-            # Přidej "a" a počkej, až ho ws1 dostane patchem – tím zajistíme,
-            # že broadcast stihl drainovat před batchem.
-            canvas.add_node("a")
-            patch_a = protocol.decode(ws1.receive_text())
-            assert patch_a["type"] == "patch"
-            seq_after_a = patch_a["seq"]
-
-            with canvas.batch():
-                canvas.add_node("x")          # delta držená batchem
-                with client.websocket_connect("/ws") as ws2:
-                    ws2.send_text(hello())
-                    init2 = protocol.decode(ws2.receive_text())
-                    # snapshot obsahuje uzly a i x (jsou ve stavu),
-                    # seq se drainem nepohnul – batch drží deltu pro x
-                    assert {n["id"] for n in init2["nodes"]} == {"a", "x"}
-                    assert init2["seq"] == seq_after_a
-            # batch skončil: broadcast smyčka drainuje seq+1 a pošle ws1
-            msg1 = protocol.decode(ws1.receive_text())
-            assert msg1["type"] == "patch"
-            assert msg1["seq"] == seq_after_a + 1
-            assert [n["id"] for n in msg1["add_nodes"]] == ["x"]
+            canvas.add_node("x")                      # pending delta (bez batche)
+            with client.websocket_connect("/ws") as ws2:
+                ws2.send_text(hello())
+                init2 = protocol.decode(ws2.receive_text())
+                # handshake nesmí drainovat: stav v initu, seq nehnutý
+                assert [n["id"] for n in init2["nodes"]] == ["a", "x"]
+                assert init2["seq"] == init1["seq"]
+            # delta přežila handshake – příští broadcast by ji poslal všem
+            drained = canvas.drain()
+            assert drained is not None
+            seq, deltas = drained
+            assert seq == init1["seq"] + 1
+            assert [n["id"] for n in deltas["add_nodes"]] == ["x"]
