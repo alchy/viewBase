@@ -29,6 +29,8 @@ export class Renderer {
 
     this.controls = new OrbitControls(this.camera, this.webgl.domElement);
     this.controls.enableDamping = true;
+    this.controls.minDistance = 20;
+    this.controls.maxDistance = 20000;   // bezpečně před far plane (50000)
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const sun = new THREE.DirectionalLight(0xffffff, 1.2);
