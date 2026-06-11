@@ -140,6 +140,9 @@ export class Renderer {
     const rect = this.webgl.domElement.getBoundingClientRect();
     this._pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     this._pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    // Bounding sphere se po pohybu instancí sama neinvaliduje – bez přepočtu
+    // by uzly mimo původní kouli byly nepickovatelné (mrtvé zóny).
+    this.nodeMesh.computeBoundingSphere();
     this.raycaster.setFromCamera(this._pointer, this.camera);
     const hit = this.raycaster.intersectObject(this.nodeMesh)[0];
     if (!hit || hit.instanceId === undefined) return null;
