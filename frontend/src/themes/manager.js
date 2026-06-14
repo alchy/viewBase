@@ -36,4 +36,20 @@ export function applyCssVars(theme, root = document.documentElement) {
   for (const [name, value] of Object.entries(theme.detailBox)) {
     root.style.setProperty(name, value);
   }
+  const w = theme.window;
+  if (w) {
+    const map = {
+      '--vb-window-header-bg': w.headerBg,
+      '--vb-window-header-fg': w.headerFg,
+      '--vb-window-gadget': w.gadget,
+      '--vb-window-body-bg': w.bodyBg,
+      '--vb-window-body-fg': w.bodyFg,
+      '--vb-window-key': w.key,
+      '--vb-window-dock-bg': w.dockBg,
+      '--vb-window-shadow': w.shadow,
+    };
+    for (const [name, value] of Object.entries(map)) {
+      if (value != null) root.style.setProperty(name, value);
+    }
+  }
 }

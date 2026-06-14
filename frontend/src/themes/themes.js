@@ -24,6 +24,11 @@ export const modern = {
     '--vb-status-fg': '#ffffff',
   },
   bloom: { enabled: false, strength: 0.8, radius: 0.6, threshold: 0.15 },
+  window: {
+    headerBg: '#d8dde6', headerFg: '#1f2430', gadget: '#5a6573',
+    bodyBg: 'rgba(255,255,255,0.97)', bodyFg: '#1f2430', key: '#667788',
+    dockBg: '#c2c9d4', shadow: '0 6px 20px rgba(0,0,0,0.22)',
+  },
   flow: { size: 2.4, baseSpeed: 220, color: '#2f7fe8', opacity: 0.85 },
 };
 
@@ -50,6 +55,11 @@ export const cyber = {
     '--vb-status-fg': '#d7f4ff',
   },
   bloom: { enabled: true, strength: 0.9, radius: 0.7, threshold: 0.15 },
+  window: {
+    headerBg: 'rgba(40,215,254,0.18)', headerFg: '#d7f4ff', gadget: '#28d7fe',
+    bodyBg: 'rgba(10,16,28,0.94)', bodyFg: '#d7f4ff', key: '#5a7d9e',
+    dockBg: 'rgba(40,215,254,0.12)', shadow: '0 0 22px rgba(40,215,254,0.45)',
+  },
   flow: { size: 3.0, baseSpeed: 260, color: '#28d7fe', opacity: 1.0 },
 };
 

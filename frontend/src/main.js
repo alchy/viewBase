@@ -1,7 +1,7 @@
 import { Connection } from './core/connection.js';
 import { GraphStore } from './core/store.js';
 import { StatusOverlay } from './core/status.js';
-import { DetailBox, detailPatchAction } from './interact/detail.js';
+import { WindowManager } from './render/windows.js';
 import { neighborhood } from './interact/highlight.js';
 import { KeyboardControls } from './interact/keyboard.js';
 import { Picker, buildEvent } from './interact/picking.js';
@@ -26,22 +26,15 @@ function webglAvailable() {
 function bootstrap() {
   const store = new GraphStore();
   const engine = new PhysicsEngine(store);
-  let detailNodeId = null;   // id uzlu zobrazeného v detail boxu
-  const detail = new DetailBox(document.body,
-    { onHide: () => { detailNodeId = null; } });
+  let activeTheme = null;            // poslední rozpuštěné téma (pro WindowManager)
+  const windowManager = new WindowManager(
+    document.getElementById('app'), store, () => activeTheme);
 
   function applyHighlight(nodeId, depth) {
     const levels = depth ?? store.config.highlight_neighbors ?? 1;
     const ids = neighborhood(store, nodeId, levels);
     // Neznámý uzel = prázdná množina: radši nic nezvýraznit než ztlumit vše
     renderer.setHighlight(ids.size > 0 ? ids : null);
-  }
-
-  function showDetail(nodeId) {
-    const node = store.nodes.get(nodeId);
-    if (!node) return;
-    detailNodeId = nodeId;
-    detail.show({ label: node.label, meta: node.meta });
   }
 
   const renderer = new Renderer(document.getElementById('app'), store, engine, {
@@ -53,10 +46,12 @@ function bootstrap() {
             const levels = store.config.highlight_neighbors ?? 1;
             if (levels > 0) applyHighlight(id, levels);
             renderer.focusOn(id);
+            if (store.config.detail_window?.open_on_click) {
+              windowManager.openFor(id);
+            }
           },
           onBackgroundClick: () => {
             renderer.setHighlight(null);
-            detail.hide();
           },
         });
       new KeyboardControls(renderer.camera, renderer.controls,
@@ -71,8 +66,10 @@ function bootstrap() {
 
   function applyTheme(nameOrDict) {
     const theme = resolveTheme(nameOrDict);
+    activeTheme = theme;
     renderer.applyTheme(theme);
     applyCssVars(theme);
+    windowManager.applyTheme();
   }
 
   const degrade = (step) => {
@@ -83,9 +80,7 @@ function bootstrap() {
 
   store.subscribe((event) => {
     if (event.kind !== 'patch') return;
-    const action = detailPatchAction(event.patch, detailNodeId);
-    if (action === 'hide') detail.hide();
-    else if (action === 'refresh') showDetail(detailNodeId);
+    windowManager.onPatch(event.patch);
   });
 
   store.subscribe((event) => {
@@ -106,7 +101,7 @@ function bootstrap() {
   });
 
   const actions = {
-    show_detail: (msg) => showDetail(msg.node_id),
+    show_detail: (msg) => windowManager.openFor(msg.node_id),
     focus: (msg) => renderer.focusOn(msg.node_id),
     highlight: (msg) => applyHighlight(msg.node_id, msg.depth),
     flow: (msg) => renderer.flowController.applyFlow(msg),
@@ -138,7 +133,7 @@ function bootstrap() {
   connection.connect();
   renderer.start();
   window.__viewbase = {
-    store, engine, renderer, connection, watchdog,
+    store, engine, renderer, connection, watchdog, windowManager,
     flowController: renderer.flowController, flowLayer: renderer.flows,
   };
 }
