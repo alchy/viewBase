@@ -52,6 +52,8 @@ class Canvas:
             "theme": _validated_theme(theme),
             "highlight_neighbors": highlight_neighbors,
             "quality": quality,
+            "detail_window": {
+                "rows": None, "width_chars": 128, "open_on_click": True},
         }
         self._lock = threading.RLock()
         self._nodes: dict[str, dict[str, Any]] = {}
@@ -77,6 +79,37 @@ class Canvas:
             "add_edges": {},      # key -> payload
             "remove_edges": {},   # key -> True
         }
+
+    def detail_window(self, rows: list[tuple[str, str]] | None = None,
+                      width_chars: int = 128, open_on_click: bool = True) -> None:
+        """Nakonfiguruj detailní okno (Amiga Workbench). Uloží se do config a
+        odejde klientovi v init. `rows` je seznam dvojic (popisek, meta_klíč),
+        nebo None = okno zobrazí všechna meta. `width_chars` je šířka těla
+        v monospace znacích. `open_on_click` zapíná otevření okna při kliknutí."""
+        if not isinstance(width_chars, int) or isinstance(width_chars, bool) \
+                or width_chars <= 0:
+            raise ValueError("width_chars musí být kladné celé číslo")
+        if not isinstance(open_on_click, bool):
+            raise ValueError("open_on_click musí být bool")
+        normalized: list[list[str]] | None
+        if rows is None:
+            normalized = None
+        else:
+            if not isinstance(rows, (list, tuple)):
+                raise ValueError("rows musí být None nebo seznam dvojic (str, str)")
+            normalized = []
+            for pair in rows:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2 \
+                        or not all(isinstance(x, str) for x in pair):
+                    raise ValueError(
+                        "rows musí být None nebo seznam dvojic (str, str)")
+                normalized.append([pair[0], pair[1]])
+        with self._lock:
+            self.config["detail_window"] = {
+                "rows": normalized,
+                "width_chars": width_chars,
+                "open_on_click": open_on_click,
+            }
 
     # ---- typy ----------------------------------------------------------
 

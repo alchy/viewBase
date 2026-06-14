@@ -1,5 +1,6 @@
 import pytest
 
+import viewbase as vb
 from viewbase import Canvas
 
 
@@ -17,7 +18,9 @@ def test_config_in_snapshot():
     c = Canvas(title="T", dimensions=2, theme="cyber", highlight_neighbors=2)
     cfg = c.snapshot()["config"]
     assert cfg == {"title": "T", "dimensions": 2, "theme": "cyber",
-                   "highlight_neighbors": 2, "quality": "auto"}
+                   "highlight_neighbors": 2, "quality": "auto",
+                   "detail_window": {"rows": None, "width_chars": 128,
+                                     "open_on_click": True}}
 
 
 def test_invalid_dimensions_raises():
@@ -110,3 +113,53 @@ def test_update_node_rejects_label_and_type_keys():
         c.update_node("a", label="X")
     with pytest.raises(ValueError, match="type"):
         c.update_node("a", type="server")
+
+
+def test_detail_window_default_present_in_snapshot():
+    canvas = vb.Canvas()
+    dw = canvas.snapshot()["config"]["detail_window"]
+    assert dw == {"rows": None, "width_chars": 128, "open_on_click": True}
+
+
+def test_detail_window_sets_config():
+    canvas = vb.Canvas()
+    canvas.detail_window(rows=[("FQDN", "fqdn"), ("IP", "ip")], width_chars=64,
+                         open_on_click=False)
+    dw = canvas.config["detail_window"]
+    assert dw == {
+        "rows": [["FQDN", "fqdn"], ["IP", "ip"]],
+        "width_chars": 64,
+        "open_on_click": False,
+    }
+
+
+def test_detail_window_rows_none_keeps_none():
+    canvas = vb.Canvas()
+    canvas.detail_window(rows=None, width_chars=128)
+    assert canvas.config["detail_window"]["rows"] is None
+
+
+def test_detail_window_rejects_nonpositive_width():
+    canvas = vb.Canvas()
+    with pytest.raises(ValueError, match="width_chars"):
+        canvas.detail_window(width_chars=0)
+    with pytest.raises(ValueError, match="width_chars"):
+        canvas.detail_window(width_chars=-5)
+    with pytest.raises(ValueError, match="width_chars"):
+        canvas.detail_window(width_chars=1.5)
+
+
+def test_detail_window_rejects_bad_rows_shape():
+    canvas = vb.Canvas()
+    with pytest.raises(ValueError, match="rows"):
+        canvas.detail_window(rows=["FQDN", "fqdn"])          # ne seznam dvojic
+    with pytest.raises(ValueError, match="rows"):
+        canvas.detail_window(rows=[("FQDN",)])               # dvojice s 1 prvkem
+    with pytest.raises(ValueError, match="rows"):
+        canvas.detail_window(rows=[("FQDN", 123)])           # nestringová hodnota
+
+
+def test_detail_window_rejects_nonbool_open_on_click():
+    canvas = vb.Canvas()
+    with pytest.raises(ValueError, match="open_on_click"):
+        canvas.detail_window(open_on_click="yes")
