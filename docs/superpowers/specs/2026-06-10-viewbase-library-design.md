@@ -141,14 +141,14 @@ with canvas.batch():
         canvas.add_node(n.id, **n.meta)
 
 @canvas.on_click
-def po_kliku(event):                          # event.node_id, .client_id, .timestamp
+def po_kliku(event):                          # event.node_id, .client_id
     canvas.show_detail(event.node_id)         # info box z metadat
     for soused in muj_zdroj(event.node_id):   # = interaktivní rozbalování
         canvas.add_node(soused.id, **soused.meta)
         canvas.add_edge(event.node_id, soused.id)
 
 @canvas.on_view_change                        # kamera, throttle 10 Hz
-def pohled(event): ...                        # event.position, .rotation, .zoom
+def pohled(event): ...                        # event.position, .target, .zoom
 
 vb.serve(canvas, port=8080, open_browser=True)
 ```
