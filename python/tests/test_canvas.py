@@ -19,7 +19,7 @@ def test_config_in_snapshot():
     cfg = c.snapshot()["config"]
     assert cfg == {"title": "T", "dimensions": 2, "theme": "cyber",
                    "highlight_neighbors": 2, "quality": "auto",
-                   "detail_window": {"rows": None, "width_chars": 128,
+                   "detail_window": {"rows": None, "width_chars": 42,
                                      "open_on_click": True}}
 
 
@@ -118,7 +118,7 @@ def test_update_node_rejects_label_and_type_keys():
 def test_detail_window_default_present_in_snapshot():
     canvas = vb.Canvas()
     dw = canvas.snapshot()["config"]["detail_window"]
-    assert dw == {"rows": None, "width_chars": 128, "open_on_click": True}
+    assert dw == {"rows": None, "width_chars": 42, "open_on_click": True}
 
 
 def test_detail_window_sets_config():

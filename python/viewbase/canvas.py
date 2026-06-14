@@ -53,7 +53,7 @@ class Canvas:
             "highlight_neighbors": highlight_neighbors,
             "quality": quality,
             "detail_window": {
-                "rows": None, "width_chars": 128, "open_on_click": True},
+                "rows": None, "width_chars": 42, "open_on_click": True},
         }
         self._lock = threading.RLock()
         self._nodes: dict[str, dict[str, Any]] = {}
@@ -81,7 +81,7 @@ class Canvas:
         }
 
     def detail_window(self, rows: list[tuple[str, str]] | None = None,
-                      width_chars: int = 128, open_on_click: bool = True) -> None:
+                      width_chars: int = 42, open_on_click: bool = True) -> None:
         """Nakonfiguruj detailní okno (Amiga Workbench). Uloží se do config a
         odejde klientovi v init. `rows` je seznam dvojic (popisek, meta_klíč),
         nebo None = okno zobrazí všechna meta. `width_chars` je šířka těla

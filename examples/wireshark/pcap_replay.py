@@ -86,7 +86,7 @@ def build_canvas() -> vb.Canvas:
     canvas.define_type("host", shape="sphere", color="#28d7fe", size=1.0)
     for name, color in PROTO_COLORS.items():
         canvas.define_flow_type(name, color=color, speed=1.0)
-    canvas.detail_window(rows=[("FQDN", "fqdn"), ("IP", "ip")], width_chars=128)
+    canvas.detail_window(rows=[("FQDN", "fqdn"), ("IP", "ip")], width_chars=42)
     return canvas
 
 
