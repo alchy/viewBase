@@ -1,7 +1,7 @@
 import { Connection } from './core/connection.js';
 import { GraphStore } from './core/store.js';
 import { StatusOverlay } from './core/status.js';
-import { DetailBox } from './interact/detail.js';
+import { DetailBox, detailPatchAction } from './interact/detail.js';
 import { neighborhood } from './interact/highlight.js';
 import { KeyboardControls } from './interact/keyboard.js';
 import { Picker, buildEvent } from './interact/picking.js';
@@ -26,7 +26,9 @@ function webglAvailable() {
 function bootstrap() {
   const store = new GraphStore();
   const engine = new PhysicsEngine(store);
-  const detail = new DetailBox();
+  let detailNodeId = null;   // id uzlu zobrazeného v detail boxu
+  const detail = new DetailBox(document.body,
+    { onHide: () => { detailNodeId = null; } });
 
   function applyHighlight(nodeId, depth) {
     const levels = depth ?? store.config.highlight_neighbors ?? 1;
@@ -37,7 +39,9 @@ function bootstrap() {
 
   function showDetail(nodeId) {
     const node = store.nodes.get(nodeId);
-    if (node) detail.show({ label: node.label, meta: node.meta });
+    if (!node) return;
+    detailNodeId = nodeId;
+    detail.show({ label: node.label, meta: node.meta });
   }
 
   const renderer = new Renderer(document.getElementById('app'), store, engine, {
@@ -76,6 +80,13 @@ function bootstrap() {
     if (step === 2) renderer.setPixelRatio(1);
   };
   const watchdog = new FpsWatchdog(degrade);
+
+  store.subscribe((event) => {
+    if (event.kind !== 'patch') return;
+    const action = detailPatchAction(event.patch, detailNodeId);
+    if (action === 'hide') detail.hide();
+    else if (action === 'refresh') showDetail(detailNodeId);
+  });
 
   store.subscribe((event) => {
     if (event.kind !== 'init') return;

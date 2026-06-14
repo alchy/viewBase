@@ -63,6 +63,7 @@ class Canvas:
         self._executor = ThreadPoolExecutor(
             max_workers=4, thread_name_prefix="viewbase-handler")
         self._actions: list[dict[str, Any]] = []
+        self._closed = False
 
     @staticmethod
     def _empty_pending() -> dict[str, dict]:
@@ -251,6 +252,8 @@ class Canvas:
         """Spustí handlery eventu ve sdíleném thread-poolu (smí blokovat).
         Neznámý event je no-op; výjimka handleru se zaloguje, server běží dál."""
         with self._lock:
+            if self._closed:
+                return
             handlers = list(self._handlers.get(name, ()))
         if not handlers:
             return
@@ -265,6 +268,16 @@ class Canvas:
             handler(event)
         except Exception:
             logger.exception("Výjimka v handleru eventu '%s'", name)
+
+    def close(self) -> None:
+        """Ukonči thread-pool handlerů. Idempotentní; další dispatch_event
+        je no-op. Nečeká na běžící handlery (wait=False) a zruší zařazené
+        čekající úlohy (cancel_futures=True)."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     # ---- akce server -> klient -------------------------------------------
 

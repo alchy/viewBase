@@ -133,4 +133,7 @@ def serve(canvas: Canvas, *, host: str = "127.0.0.1", port: int = 8080,
     if open_browser:
         threading.Timer(
             0.7, webbrowser.open, args=(f"http://{host}:{port}/",)).start()
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    try:
+        uvicorn.run(app, host=host, port=port, log_level="warning")
+    finally:
+        canvas.close()   # i po KeyboardInterrupt – nenechat viset worker vlákna

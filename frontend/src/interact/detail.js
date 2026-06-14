@@ -1,6 +1,17 @@
+/** Čistá logika: co má detail box udělat po patchi ze store.
+ *  shownId = id právě zobrazeného uzlu (null = box je schovaný).
+ *  Vrací 'hide' | 'refresh' | null. */
+export function detailPatchAction(patch, shownId) {
+  if (shownId == null) return null;
+  if ((patch.remove_nodes ?? []).includes(shownId)) return 'hide';
+  if ((patch.update_nodes ?? []).some((n) => n.id === shownId)) return 'refresh';
+  return null;
+}
+
 /** Jediný HTML overlay s tabulkou metadat uzlu a zavíracím křížkem. */
 export class DetailBox {
-  constructor(container = document.body) {
+  constructor(container = document.body, { onHide = () => {} } = {}) {
+    this.onHide = onHide;
     this.el = document.createElement('div');
     this.el.dataset.role = 'detail-box';
     this.el.style.cssText = [
@@ -47,5 +58,6 @@ export class DetailBox {
 
   hide() {
     this.el.style.display = 'none';
+    this.onHide();
   }
 }
