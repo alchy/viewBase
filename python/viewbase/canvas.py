@@ -5,6 +5,7 @@ import logging
 import re
 import threading
 import types
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
@@ -56,6 +57,8 @@ class Canvas:
         self._nodes: dict[str, dict[str, Any]] = {}
         self._edges: dict[tuple[str, str], dict[str, Any]] = {}
         self._node_types: dict[str, dict[str, Any]] = {}
+        self._flow_types: dict[str, dict[str, Any]] = {}
+        self._flows: dict[str, dict[str, Any]] = {}   # flow_id -> trvalý tok (do init)
         self._seq = 0
         self._batch_depth = 0
         self._pending = self._empty_pending()
@@ -81,6 +84,86 @@ class Canvas:
         """Definuj typ uzlu. V Plánu 1 se propaguje jen přes init (volat před serve)."""
         with self._lock:
             self._node_types[name] = dict(style)
+
+    def define_flow_type(self, name: str, *, color: str | None = None,
+                         size: float = 1.0, speed: float = 1.0) -> None:
+        """Definuj typ toku (jako typ uzlu). Bez `color` dostane tok barvu
+        z kategorické palety aktivního tématu (řeší klient podle indexu typu)."""
+        with self._lock:
+            self._flow_types[name] = {
+                "color": color, "size": float(size), "speed": float(speed)}
+
+    def _flow_type_index(self, name: str | None) -> int | None:
+        """Index typu v pořadí registrace (pro výběr barvy z palety na klientu)."""
+        if name is None:
+            return None
+        return list(self._flow_types).index(name)
+
+    def _resolve_flow_path(self, source: str | None, target: str | None,
+                           path: list[str] | None) -> list[str]:
+        """Sestav a zvaliduj cestu toku: každá sousední dvojice musí být
+        existující hrana, každý uzel musí existovat. Vrátí cestu (>=2 uzly)."""
+        if path is not None:
+            resolved = list(path)
+        elif source is not None and target is not None:
+            resolved = [source, target]
+        else:
+            raise ValueError(
+                "flow vyzaduje bud (source, target), nebo path=[...]")
+        if len(resolved) < 2:
+            raise ValueError("flow path musi mit aspon 2 uzly")
+        for node_id in resolved:
+            if node_id not in self._nodes:
+                raise ValueError(f"flow: uzel '{node_id}' neexistuje")
+        for a, b in zip(resolved, resolved[1:]):
+            if _edge_key(a, b) not in self._edges:
+                raise ValueError(
+                    f"flow: hrana {a}-{b} neexistuje - tok jede jen po hranach")
+        return resolved
+
+    def flow(self, source: str | None = None, target: str | None = None, *,
+             path: list[str] | None = None, type: str | None = None,
+             count: int | None = 1, interval: float = 0.2, speed: float = 1.0,
+             color: str | None = None, size: float | None = None) -> str | None:
+        """Vysli tok castic po hrane/ceste (source -> target nebo path=[...]).
+
+        `count=N` je jednorazovy (fire-and-forget; server tok neudrzi, vraci
+        None). `count=None` je trvaly: vraci `flow_id`, tok je v `init` a prezije
+        reconnect; zastaves ho `stop_flow(flow_id)`. `interval` je rozestup castic
+        v sekundach, `speed` nasobek vychozi rychlosti tematu."""
+        with self._lock:
+            if type is not None and type not in self._flow_types:
+                raise ValueError(
+                    f"Neznam typ toku '{type}' - nejdriv define_flow_type")
+            resolved = self._resolve_flow_path(source, target, path)
+            payload = {
+                "action": "flow",
+                "path": resolved,
+                "flow_type": type,
+                "type_index": self._flow_type_index(type),
+                "count": count,
+                "interval": float(interval),
+                "speed": float(speed),
+                "color": color,
+                "size": size,
+            }
+            if count is None:
+                flow_id = uuid.uuid4().hex[:8]
+                payload["flow_id"] = flow_id
+                self._flows[flow_id] = {k: v for k, v in payload.items()
+                                        if k != "action"}
+                self._actions.append(payload)
+                return flow_id
+            self._actions.append(payload)
+            return None
+
+    def stop_flow(self, flow_id: str) -> None:
+        """Zastav trvaly tok: odeber ho ze stavu a zarad akci stop_flow."""
+        with self._lock:
+            if flow_id not in self._flows:
+                raise ValueError(f"Trvaly tok '{flow_id}' neexistuje")
+            del self._flows[flow_id]
+            self._actions.append({"action": "stop_flow", "flow_id": flow_id})
 
     # ---- uzly ----------------------------------------------------------
 
@@ -193,6 +276,8 @@ class Canvas:
                 "node_types": {n: dict(s) for n, s in self._node_types.items()},
                 "nodes": [self._public_node(n) for n in self._nodes.values()],
                 "edges": [self._public_edge(e) for e in self._edges.values()],
+                "flow_types": {n: dict(s) for n, s in self._flow_types.items()},
+                "flows": [dict(f) for f in self._flows.values()],
             }
 
     # ---- delty ---------------------------------------------------------
