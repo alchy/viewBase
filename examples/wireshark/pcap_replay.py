@@ -10,6 +10,8 @@ Spuštění:
     python examples/wireshark/pcap_replay.py sample.pcap --speed 4
 """
 import argparse
+import os
+import sys
 import threading
 import time
 
@@ -81,7 +83,7 @@ def replay(canvas: vb.Canvas, packets, speed: float) -> None:
             for node_id in (src, dst):
                 if node_id not in nodes:
                     nodes.add(node_id)
-                    canvas.add_node(node_id, label="{ip}", ip=node_id)
+                    canvas.add_node(node_id, type="host", label="{ip}", ip=node_id)
             edge = (src, dst) if src <= dst else (dst, src)
             if edge not in edges:
                 edges.add(edge)
@@ -99,7 +101,12 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
 
+    if not os.path.isfile(args.pcap):
+        sys.exit(f"Soubor '{args.pcap}' neexistuje. Vyrob ukázkový: "
+                 f"python examples/wireshark/make_sample_pcap.py sample.pcap")
     packets = rdpcap(args.pcap)
+    if not packets:
+        sys.exit(f"'{args.pcap}' neobsahuje žádné pakety.")
     canvas = build_canvas()
 
     threading.Thread(
