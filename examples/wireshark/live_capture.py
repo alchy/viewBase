@@ -45,7 +45,7 @@ def make_handler(canvas: vb.Canvas):
             for node_id in (src, dst):
                 if node_id not in nodes:
                     nodes.add(node_id)
-                    canvas.add_node(node_id, label="{ip}", ip=node_id)
+                    canvas.add_node(node_id, type="host", label="{ip}", ip=node_id)
             edge = (src, dst) if src <= dst else (dst, src)
             if edge not in edges:
                 edges.add(edge)
