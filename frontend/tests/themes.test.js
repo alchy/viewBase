@@ -31,4 +31,11 @@ describe('resolveTheme', () => {
     const theme = deepMerge(THEMES.modern, { palette: ['#111111'] });
     expect(theme.palette).toEqual(['#111111']);
   });
+
+  it('cyber je vestavěné: tmavé pozadí a zapnutý bloom', () => {
+    const theme = resolveTheme('cyber');
+    expect(theme.background).toBe('#0a0e1a');
+    expect(theme.bloom.enabled).toBe(true);
+    expect(theme.palette.length).toBeGreaterThanOrEqual(8);
+  });
 });

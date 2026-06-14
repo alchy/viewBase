@@ -26,4 +26,29 @@ export const modern = {
   bloom: { enabled: false, strength: 0.8, radius: 0.6, threshold: 0.15 },
 };
 
-export const THEMES = { modern };   // 'cyber' přibude v Tasku 4
+export const cyber = {
+  background: '#0a0e1a',
+  palette: ['#28d7fe', '#ff2a6d', '#05ffa1', '#b967ff', '#ffd166',
+    '#01c8ee', '#ff6e27', '#e8f8ff'],
+  node: {
+    color: '#28d7fe', size: 1.0, shape: 'sphere',
+    emissive: '#1b3a5c', emissiveIntensity: 1.2,   // jádro glow pro bloom
+  },
+  edge: { color: '#1f4f6e', opacity: 0.65 },
+  lights: {
+    ambient: { color: '#314466', intensity: 0.9 },
+    directional: { color: '#9fd8ff', intensity: 1.4 },
+  },
+  label: { color: '#d7f4ff', size: 6, halo: '#0a0e1a', budget: 200 },
+  detailBox: {
+    '--vb-detail-bg': 'rgba(10,16,28,0.92)',
+    '--vb-detail-fg': '#d7f4ff',
+    '--vb-detail-key': '#5a7d9e',
+    '--vb-detail-shadow': '0 0 18px rgba(40,215,254,0.35)',
+    '--vb-status-bg': 'rgba(40,215,254,0.15)',
+    '--vb-status-fg': '#d7f4ff',
+  },
+  bloom: { enabled: true, strength: 0.9, radius: 0.7, threshold: 0.15 },
+};
+
+export const THEMES = { modern, cyber };

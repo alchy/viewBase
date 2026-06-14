@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { resolveTheme } from '../themes/manager.js';
 import { nodeStyle } from './style.js';
 import { LabelLayer } from './labels.js';
@@ -51,6 +54,10 @@ export class Renderer {
     this.meshes = new Map();    // klíč (DEFAULT_TYPE | název typu) -> InstancedMesh
     this._counts = new Map();   // pracovní mapa snímku: klíč -> počet instancí
 
+    this.composer = null;       // EffectComposer, jen když je bloom aktivní
+    this.bloomPass = null;
+    this.bloomDisabled = false; // jednosměrná quality degradace (Task 5)
+
     this.edgeCapacity = 0;
     this.edgeLines = null;
     this._ensureEdgeCapacity(4096);
@@ -99,6 +106,36 @@ export class Renderer {
       mesh.material.emissiveIntensity = theme.node.emissiveIntensity;
     }
     this.labels.applyTheme(theme);
+    this._syncBloom();
+  }
+
+  /** Vytvoří/zruší EffectComposer podle theme.bloom (a quality degradace).
+   *  Volá se z applyTheme a každý snímek z _frame – kamera vzniká lazy
+   *  až po init, composer na ni proto může čekat. */
+  _syncBloom() {
+    const want = Boolean(
+      this.theme.bloom.enabled && !this.bloomDisabled && this.camera);
+    if (want && !this.composer) {
+      const size = new THREE.Vector2();
+      this.webgl.getSize(size);
+      this.composer = new EffectComposer(this.webgl);
+      this.composer.setPixelRatio(this.webgl.getPixelRatio());
+      this.composer.setSize(size.x, size.y);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloomPass = new UnrealBloomPass(size.clone(),
+        this.theme.bloom.strength, this.theme.bloom.radius,
+        this.theme.bloom.threshold);
+      this.composer.addPass(this.bloomPass);
+    } else if (!want && this.composer) {
+      this.bloomPass.dispose();
+      this.composer.dispose();
+      this.composer = null;
+      this.bloomPass = null;
+    } else if (this.composer) {
+      this.bloomPass.strength = this.theme.bloom.strength;
+      this.bloomPass.radius = this.theme.bloom.radius;
+      this.bloomPass.threshold = this.theme.bloom.threshold;
+    }
   }
 
   /** Kamera + controls podle config.dimensions. Volá se jen jednou – změna
@@ -143,6 +180,10 @@ export class Renderer {
       this.camera.aspect = aspect;
     }
     this.camera.updateProjectionMatrix();
+    this.composer?.setSize(
+      this.container.clientWidth, this.container.clientHeight);
+    this.bloomPass?.setSize(
+      this.container.clientWidth, this.container.clientHeight);
   }
 
   /** InstancedMesh pro klíč typu: vytvoří nový, zvětší (kapacitní regrow
@@ -213,7 +254,9 @@ export class Renderer {
     this.labels.update(dt, this.camera, this.highlightSet, this.display);
     this._stepFocus(dt);
     this.controls.update();
-    this.webgl.render(this.scene, this.camera);
+    this._syncBloom();
+    if (this.composer) this.composer.render();
+    else this.webgl.render(this.scene, this.camera);
   }
 
   /** Klíč meshe pro uzel: název typu, pokud ho store zná, jinak default. */
