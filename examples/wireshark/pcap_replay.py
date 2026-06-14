@@ -65,7 +65,7 @@ def make_resolver(canvas: vb.Canvas):
             fqdn = socket.gethostbyaddr(ip)[0]
         except OSError:
             return                       # bez PTR záznamu necháme jen IP
-        canvas.update_node(ip, name=f"{fqdn} [{ip}]")
+        canvas.update_node(ip, name=f"{fqdn} [{ip}]", fqdn=fqdn, ip=ip)
 
     def resolve(ip: str) -> None:
         if ip in hotovo:
@@ -86,6 +86,7 @@ def build_canvas() -> vb.Canvas:
     canvas.define_type("host", shape="sphere", color="#28d7fe", size=1.0)
     for name, color in PROTO_COLORS.items():
         canvas.define_flow_type(name, color=color, speed=1.0)
+    canvas.detail_window(rows=[("FQDN", "fqdn"), ("IP", "ip")], width_chars=128)
     return canvas
 
 
@@ -116,7 +117,7 @@ def replay(canvas: vb.Canvas, packets, speed: float) -> None:
                 if node_id not in nodes:
                     nodes.add(node_id)
                     canvas.add_node(node_id, type="host", label="{name}",
-                                    name=node_id, ip=node_id)
+                                    name=node_id, ip=node_id, fqdn="")
             edge = (src, dst) if src <= dst else (dst, src)
             if edge not in edges:
                 edges.add(edge)
