@@ -1,7 +1,8 @@
 """Živé zachytávání paketů jako rostoucí graf toků.
 
-Uzly = IP adresy, hrany = komunikující páry, tok = každý paket obarvený podle
-protokolu. Vyžaduje oprávnění k rozhraní (typicky root / sudo).
+Uzly = adresy (veřejné cíle se reverzním DNS doplní na popisek "FQDN [ip]"),
+hrany = komunikující páry, tok = každý paket obarvený podle protokolu.
+Vyžaduje oprávnění k rozhraní (typicky root / sudo).
 
 Spuštění (Linux/macOS):
     pip install scapy
@@ -17,8 +18,8 @@ from scapy.all import IP, sniff
 
 import viewbase as vb
 
-# Re-use klasifikace z pcap_replay (DRY): stejné typy toků i barvy.
-from pcap_replay import PROTO_COLORS, classify
+# Re-use z pcap_replay (DRY): klasifikace, barvy i FQDN resolver.
+from pcap_replay import PROTO_COLORS, classify, make_resolver
 
 
 def build_canvas() -> vb.Canvas:
@@ -33,6 +34,7 @@ def build_canvas() -> vb.Canvas:
 def make_handler(canvas: vb.Canvas):
     nodes: set[str] = set()
     edges: set[tuple[str, str]] = set()
+    resolve = make_resolver(canvas)
 
     def on_packet(pkt) -> None:
         if not pkt.haslayer(IP):
@@ -45,11 +47,14 @@ def make_handler(canvas: vb.Canvas):
             for node_id in (src, dst):
                 if node_id not in nodes:
                     nodes.add(node_id)
-                    canvas.add_node(node_id, type="host", label="{ip}", ip=node_id)
+                    canvas.add_node(node_id, type="host", label="{name}",
+                                    name=node_id, ip=node_id)
             edge = (src, dst) if src <= dst else (dst, src)
             if edge not in edges:
                 edges.add(edge)
                 canvas.add_edge(src, dst)
+        for node_id in (src, dst):
+            resolve(node_id)             # FQDN doplní popisek na pozadí
         canvas.flow(src, dst, type=classify(pkt), count=1, interval=0.05)
 
     return on_packet

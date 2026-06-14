@@ -1,8 +1,8 @@
 """Přehraj pcap jako živý graf toků.
 
-Uzly = IP adresy, hrany = komunikující páry, toky = pakety obarvené podle
-protokolu (typy toků). Přehrávání jde v časové ose paketu s volitelným
-zrychlením.
+Uzly = adresy (veřejné cíle se reverzním DNS doplní na popisek "FQDN [ip]"),
+hrany = komunikující páry, toky = pakety obarvené podle protokolu (typy toků).
+Přehrávání jde v časové ose paketu s volitelným zrychlením.
 
 Spuštění:
     pip install scapy
@@ -10,10 +10,13 @@ Spuštění:
     python examples/wireshark/pcap_replay.py sample.pcap --speed 4
 """
 import argparse
+import ipaddress
 import os
+import socket
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from scapy.all import DNS, ICMP, IP, TCP, UDP, rdpcap
 
@@ -49,6 +52,34 @@ def classify(pkt) -> str:
     return "other"
 
 
+def make_resolver(canvas: vb.Canvas):
+    """Vrátí funkci resolve(ip), která asynchronně doplní popisek uzlu na
+    'FQDN [ip]'. Reverzní DNS je pomalé, běží proto na pozadí v thread-poolu;
+    do té doby je popisek jen IP. Řeší jen veřejné (internetové) cíle –
+    privátní/lokální adresy zůstanou jako IP."""
+    pool = ThreadPoolExecutor(max_workers=8)
+    hotovo: set[str] = set()
+
+    def _resolve(ip: str) -> None:
+        try:
+            fqdn = socket.gethostbyaddr(ip)[0]
+        except OSError:
+            return                       # bez PTR záznamu necháme jen IP
+        canvas.update_node(ip, name=f"{fqdn} [{ip}]")
+
+    def resolve(ip: str) -> None:
+        if ip in hotovo:
+            return
+        hotovo.add(ip)
+        try:
+            if ipaddress.ip_address(ip).is_global:
+                pool.submit(_resolve, ip)
+        except ValueError:
+            pass
+
+    return resolve
+
+
 def build_canvas() -> vb.Canvas:
     canvas = vb.Canvas(title="Wireshark replay", theme="cyber",
                        highlight_neighbors=1)
@@ -63,6 +94,7 @@ def replay(canvas: vb.Canvas, packets, speed: float) -> None:
     Čeká podle časových razítek paketů, vydělených `speed`."""
     nodes: set[str] = set()
     edges: set[tuple[str, str]] = set()
+    resolve = make_resolver(canvas)
     prev_ts = None
     for pkt in packets:
         if not pkt.haslayer(IP):
@@ -83,11 +115,14 @@ def replay(canvas: vb.Canvas, packets, speed: float) -> None:
             for node_id in (src, dst):
                 if node_id not in nodes:
                     nodes.add(node_id)
-                    canvas.add_node(node_id, type="host", label="{ip}", ip=node_id)
+                    canvas.add_node(node_id, type="host", label="{name}",
+                                    name=node_id, ip=node_id)
             edge = (src, dst) if src <= dst else (dst, src)
             if edge not in edges:
                 edges.add(edge)
                 canvas.add_edge(src, dst)
+        for node_id in (src, dst):
+            resolve(node_id)             # FQDN doplní popisek na pozadí
 
         # tok = jeden paket obarvený podle protokolu (fire-and-forget)
         canvas.flow(src, dst, type=classify(pkt), count=1, interval=0.05)
