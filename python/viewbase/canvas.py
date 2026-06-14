@@ -69,6 +69,7 @@ class Canvas:
             max_workers=4, thread_name_prefix="viewbase-handler")
         self._actions: list[dict[str, Any]] = []
         self._closed = False
+        self._node_label_template: str | None = None
 
     @staticmethod
     def _empty_pending() -> dict[str, dict]:
@@ -112,6 +113,17 @@ class Canvas:
             }
 
     # ---- typy ----------------------------------------------------------
+
+    def node_label(self, template: str | None) -> None:
+        """Nastav celocanvasovou šablonu popisku uzlu, sestavenou z meta klíčů –
+        např. ``"{fqdn} [{ip}]"``. Použije se u uzlů bez explicitního ``label=``
+        v ``add_node``; přepočítá se při každé změně metadat (``update_node``).
+        Pořadí priorit popisku: per-node ``label`` > ``node_label`` > id uzlu.
+        ``None`` vrátí výchozí chování (popisek = id)."""
+        if template is not None and not isinstance(template, str):
+            raise ValueError("node_label musí být řetězec nebo None")
+        with self._lock:
+            self._node_label_template = template
 
     def define_type(self, name: str, **style: Any) -> None:
         """Definuj typ uzlu. V Plánu 1 se propaguje jen přes init (volat před serve)."""
@@ -274,6 +286,8 @@ class Canvas:
 
     def _render_label(self, node: dict[str, Any]) -> str:
         template = node["label_template"]
+        if template is None:                       # bez per-node šablony
+            template = self._node_label_template   # zkus celocanvasovou
         if template is None:
             return node["id"]
 

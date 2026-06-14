@@ -163,3 +163,38 @@ def test_detail_window_rejects_nonbool_open_on_click():
     canvas = vb.Canvas()
     with pytest.raises(ValueError, match="open_on_click"):
         canvas.detail_window(open_on_click="yes")
+
+
+def test_node_label_applies_without_explicit_label():
+    c = Canvas()
+    c.node_label("{fqdn} [{ip}]")
+    c.add_node("n", fqdn="dns.google", ip="8.8.8.8")
+    assert c.snapshot()["nodes"][0]["label"] == "dns.google [8.8.8.8]"
+
+
+def test_explicit_label_overrides_canvas_node_label():
+    c = Canvas()
+    c.node_label("{fqdn} [{ip}]")
+    c.add_node("n", label="{ip}", fqdn="dns.google", ip="8.8.8.8")
+    assert c.snapshot()["nodes"][0]["label"] == "8.8.8.8"
+
+
+def test_node_label_reassembles_on_update():
+    c = Canvas()
+    c.node_label("{fqdn} [{ip}]")
+    c.add_node("n", fqdn="", ip="8.8.8.8")
+    assert c.snapshot()["nodes"][0]["label"] == " [8.8.8.8]"
+    c.update_node("n", fqdn="dns.google")
+    assert c.snapshot()["nodes"][0]["label"] == "dns.google [8.8.8.8]"
+
+
+def test_node_label_none_falls_back_to_id():
+    c = Canvas()
+    c.add_node("n", fqdn="x")
+    assert c.snapshot()["nodes"][0]["label"] == "n"
+
+
+def test_node_label_rejects_non_string():
+    c = Canvas()
+    with pytest.raises(ValueError, match="node_label"):
+        c.node_label(123)
