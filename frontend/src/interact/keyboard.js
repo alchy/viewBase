@@ -6,7 +6,7 @@ const PAN_STEP = 40;        // světové jednotky na krok (2D pan)
 const MIN_POLAR = 0.05;     // rad – nepřeklápět kameru přes póly
 
 /** Klávesy: W/S = orbit nahoru/dolů (polar), A/D = vlevo/vpravo (azimut),
- *  Q/E = zoom in/out, mezerník = reset na výchozí pohled.
+ *  Q/E = zoom in/out, mezerník nebo R = reset na výchozí pohled.
  *  Ve 2D režimu WASD = pan, Q/E = zoom (ortografická kamera). */
 export class KeyboardControls {
   constructor(camera, controls, { is2d = false, target = window } = {}) {
@@ -35,7 +35,7 @@ export class KeyboardControls {
         case 'KeyD': this._pan(PAN_STEP, 0); return true;
         case 'KeyQ': this._zoom(ZOOM_FACTOR); return true;
         case 'KeyE': this._zoom(1 / ZOOM_FACTOR); return true;
-        case 'Space': this.reset(); return true;
+        case 'Space': case 'KeyR': this.reset(); return true;
         default: return false;
       }
     }
@@ -46,7 +46,7 @@ export class KeyboardControls {
       case 'KeyD': this._orbit(-ORBIT_STEP, 0); return true;
       case 'KeyQ': this._zoom(ZOOM_FACTOR); return true;
       case 'KeyE': this._zoom(1 / ZOOM_FACTOR); return true;
-      case 'Space': this.reset(); return true;
+      case 'Space': case 'KeyR': this.reset(); return true;
       default: return false;
     }
   }
