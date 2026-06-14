@@ -24,6 +24,7 @@ export const modern = {
     '--vb-status-fg': '#ffffff',
   },
   bloom: { enabled: false, strength: 0.8, radius: 0.6, threshold: 0.15 },
+  flow: { size: 2.4, baseSpeed: 220, color: '#2f7fe8', opacity: 0.85 },
 };
 
 export const cyber = {
@@ -49,6 +50,7 @@ export const cyber = {
     '--vb-status-fg': '#d7f4ff',
   },
   bloom: { enabled: true, strength: 0.9, radius: 0.7, threshold: 0.15 },
+  flow: { size: 3.0, baseSpeed: 260, color: '#28d7fe', opacity: 1.0 },
 };
 
 export const THEMES = { modern, cyber };

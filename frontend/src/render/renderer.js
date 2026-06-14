@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { resolveTheme } from '../themes/manager.js';
 import { nodeStyle } from './style.js';
 import { LabelLayer } from './labels.js';
+import { FlowController, FlowLayer } from './flow.js';
 
 const SMOOTHING = 8;            // 1/s – rychlost dobíhání zobrazené pozice k fyzice
 const DIM_TOWARD_BG = 0.75;     // ztlumené uzly: 75 % cesty k barvě pozadí
@@ -78,6 +79,8 @@ export class Renderer {
     this._focusFrom = new THREE.Vector3();
 
     this.labels = new LabelLayer(this.scene, store, engine);
+    this.flowController = new FlowController(store, {});
+    this.flows = new FlowLayer(this.scene, store, this.flowController);
     this.applyTheme(this.theme);
 
     store.subscribe((event) => {
@@ -107,6 +110,7 @@ export class Renderer {
       mesh.material.emissiveIntensity = theme.node.emissiveIntensity;
     }
     this.labels.applyTheme(theme);
+    this.flows.applyTheme(theme);
     this._syncBloom();
   }
 
@@ -267,6 +271,7 @@ export class Renderer {
     this._syncNodes(dt);
     this._syncEdges();
     this.labels.update(dt, this.camera, this.highlightSet, this.display);
+    this.flows.update(dt, this.theme, this.display);
     this._stepFocus(dt);
     this.controls.update();
     this._syncBloom();

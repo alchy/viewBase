@@ -3,6 +3,8 @@ export class GraphStore {
   constructor() {
     this.config = {};
     this.nodeTypes = {};
+    this.flowTypes = {};
+    this.flows = [];
     this.nodes = new Map();   // id -> {id, type, label, meta}
     this.edges = new Map();   // edgeKey -> {source, target, meta}
     this.seq = -1;
@@ -27,6 +29,8 @@ export class GraphStore {
   applyInit(msg) {
     this.config = msg.config;
     this.nodeTypes = msg.node_types;
+    this.flowTypes = msg.flow_types ?? {};
+    this.flows = msg.flows ?? [];
     this.nodes.clear();
     this.edges.clear();
     for (const node of msg.nodes) this.nodes.set(node.id, node);

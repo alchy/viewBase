@@ -90,6 +90,7 @@ function bootstrap() {
 
   store.subscribe((event) => {
     if (event.kind !== 'init') return;
+    renderer.flowController.replayInit(store.flows ?? []);
     applyTheme(store.config.theme);
     if (store.config.title) {
       document.title = `${store.config.title} – viewbase`;
@@ -108,6 +109,8 @@ function bootstrap() {
     show_detail: (msg) => showDetail(msg.node_id),
     focus: (msg) => renderer.focusOn(msg.node_id),
     highlight: (msg) => applyHighlight(msg.node_id, msg.depth),
+    flow: (msg) => renderer.flowController.applyFlow(msg),
+    stop_flow: (msg) => renderer.flowController.stopFlow(msg.flow_id),
     set_theme: (msg) => {
       store.config.theme = msg.theme;     // reconnect → init už ponese nové téma
       applyTheme(msg.theme);
@@ -134,7 +137,10 @@ function bootstrap() {
 
   connection.connect();
   renderer.start();
-  window.__viewbase = { store, engine, renderer, connection, watchdog };
+  window.__viewbase = {
+    store, engine, renderer, connection, watchdog,
+    flowController: renderer.flowController, flowLayer: renderer.flows,
+  };
 }
 
 if (webglAvailable()) {
