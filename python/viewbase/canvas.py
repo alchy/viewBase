@@ -14,6 +14,7 @@ logger = logging.getLogger("viewbase")
 _LABEL_KEY = re.compile(r"\{([^{}]+)\}")
 
 BUILTIN_THEMES = ("modern", "cyber")
+QUALITIES = ("low", "high", "auto")
 
 
 def _validated_theme(theme: Any) -> Any:
@@ -38,14 +39,18 @@ class Canvas:
     """Thread-safe model grafu. Mutace se hromadí jako delty pro server."""
 
     def __init__(self, *, title: str = "viewbase", dimensions: int = 3,
-                 theme: Any = "modern", highlight_neighbors: int = 1):
+                 theme: Any = "modern", highlight_neighbors: int = 1,
+                 quality: str = "auto"):
         if dimensions not in (2, 3):
             raise ValueError("dimensions musí být 2 nebo 3")
+        if quality not in QUALITIES:
+            raise ValueError(f"quality musí být jedno z {QUALITIES}")
         self.config = {
             "title": title,
             "dimensions": dimensions,
             "theme": _validated_theme(theme),
             "highlight_neighbors": highlight_neighbors,
+            "quality": quality,
         }
         self._lock = threading.RLock()
         self._nodes: dict[str, dict[str, Any]] = {}

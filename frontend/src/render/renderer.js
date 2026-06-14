@@ -57,6 +57,7 @@ export class Renderer {
     this.composer = null;       // EffectComposer, jen když je bloom aktivní
     this.bloomPass = null;
     this.bloomDisabled = false; // jednosměrná quality degradace (Task 5)
+    this.onFrame = null;        // hook pro FpsWatchdog (main.js, quality=auto)
 
     this.edgeCapacity = 0;
     this.edgeLines = null;
@@ -136,6 +137,19 @@ export class Renderer {
       this.bloomPass.radius = this.theme.bloom.radius;
       this.bloomPass.threshold = this.theme.bloom.threshold;
     }
+  }
+
+  /** Quality degradace krok 1: jednosměrné vypnutí bloomu (set_theme
+   *  na bloom téma už ho znovu nezapne). */
+  disableBloom() {
+    this.bloomDisabled = true;
+    this._syncBloom();
+  }
+
+  /** Quality degradace krok 2: snížení pixel ratio (webgl i composer). */
+  setPixelRatio(ratio) {
+    this.webgl.setPixelRatio(ratio);
+    this.composer?.setPixelRatio(ratio);
   }
 
   /** Kamera + controls podle config.dimensions. Volá se jen jednou – změna
@@ -249,6 +263,7 @@ export class Renderer {
     const dt = this.clock.getDelta();
     if (!this.camera) return;       // čekáme na init (config.dimensions)
     this.frameIndex += 1;           // invalidace memoizace bounding sphere
+    if (this.onFrame) this.onFrame(dt);
     this._syncNodes(dt);
     this._syncEdges();
     this.labels.update(dt, this.camera, this.highlightSet, this.display);

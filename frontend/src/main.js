@@ -7,6 +7,7 @@ import { KeyboardControls } from './interact/keyboard.js';
 import { Picker, buildEvent } from './interact/picking.js';
 import { throttle } from './interact/throttle.js';
 import { PhysicsEngine } from './physics/engine.js';
+import { FpsWatchdog } from './render/quality.js';
 import { Renderer } from './render/renderer.js';
 import { applyCssVars, resolveTheme } from './themes/manager.js';
 
@@ -70,12 +71,26 @@ function bootstrap() {
     applyCssVars(theme);
   }
 
+  const degrade = (step) => {
+    if (step === 1) renderer.disableBloom();
+    if (step === 2) renderer.setPixelRatio(1);
+  };
+  const watchdog = new FpsWatchdog(degrade);
+
   store.subscribe((event) => {
     if (event.kind !== 'init') return;
     applyTheme(store.config.theme);
     if (store.config.title) {
       document.title = `${store.config.title} – viewbase`;
     }
+    const quality = store.config.quality ?? 'auto';
+    if (quality === 'low') {
+      degrade(1);                                  // hned a natrvalo
+      degrade(2);
+    } else if (quality === 'auto') {
+      renderer.onFrame = (dt) => watchdog.frame(dt);
+    }
+    // 'high': žádný watchdog, nikdy nedegradovat
   });
 
   const actions = {
@@ -108,7 +123,7 @@ function bootstrap() {
 
   connection.connect();
   renderer.start();
-  window.__viewbase = { store, engine, renderer, connection };
+  window.__viewbase = { store, engine, renderer, connection, watchdog };
 }
 
 if (webglAvailable()) {

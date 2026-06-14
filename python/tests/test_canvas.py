@@ -17,7 +17,7 @@ def test_config_in_snapshot():
     c = Canvas(title="T", dimensions=2, theme="cyber", highlight_neighbors=2)
     cfg = c.snapshot()["config"]
     assert cfg == {"title": "T", "dimensions": 2, "theme": "cyber",
-                   "highlight_neighbors": 2}
+                   "highlight_neighbors": 2, "quality": "auto"}
 
 
 def test_invalid_dimensions_raises():
