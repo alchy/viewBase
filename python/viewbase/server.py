@@ -134,6 +134,12 @@ def serve(canvas: Canvas, *, host: str = "127.0.0.1", port: int = 8080,
         threading.Timer(
             0.7, webbrowser.open, args=(f"http://{host}:{port}/",)).start()
     try:
-        uvicorn.run(app, host=host, port=port, log_level="warning")
+        # ws_ping_interval=None vypíná serverový keepalive ping knihovny
+        # websockets: jeho samostatná úloha jinak souběžně "draina" stejné
+        # spojení jako náš broadcast a při velkém provozu spadne na interním
+        # assertu. Mrtvá spojení odhalí selhání dalšího patche (klient se
+        # reconnectne), keepalive proto nepotřebujeme.
+        uvicorn.run(app, host=host, port=port, log_level="warning",
+                    ws_ping_interval=None, ws_ping_timeout=None)
     finally:
         canvas.close()   # i po KeyboardInterrupt – nenechat viset worker vlákna
