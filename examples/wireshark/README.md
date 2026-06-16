@@ -47,6 +47,34 @@ sudo python examples/wireshark/live_capture.py --iface en0
 `--iface` vyber podle systému (`en0` na macOS, `eth0`/`wlan0` na Linuxu;
 bez `--iface` se použije výchozí rozhraní scapy). Ctrl-C ukončí.
 
+> **`sudo: python: command not found`?** Pokud je `python` jen shell alias
+> (např. na `python3.11`) nebo běží z venv, `sudo` ho nevidí — aliasy ani
+> aktivovaný venv se do roota nedědí. Spusť přímo interpreter z venv:
+>
+> ```bash
+> sudo .venv/bin/python examples/wireshark/live_capture.py --iface en0
+> ```
+
+## Cesta paketu (traceroute)
+
+Místo dvou koncových uzlů ukáže i **routery po cestě**: pro každý nový
+globální cíl se na pozadí spustí traceroute, jeho hopy přibudou jako uzly
+(routery jako zelené krychle, neodpovídající „tiché" hopy jako šedé
+placeholdery `*`) a pakety pak putují jako tok přes celou cestu
+`ty → router → … → cíl`. Cesty se cachují a počítají paralelně.
+
+```bash
+sudo .venv/bin/python examples/wireshark/live_route.py --iface en0
+```
+
+Přepínače: `--max-hops` (default 30), `--timeout` (s na hop, default 1.0),
+`--workers` (paralelní traceroute, default 8), `--port`, `--iface`. Vyžaduje
+root (sniff i traceroute proby používají raw sockety) — viz poznámka výše o
+`.venv/bin/python`.
+
+Než traceroute (sekundy) doběhne, vede k cíli dočasná přímá hrana; po zjištění
+cesty se nahradí routery. LAN cíle (privátní adresy) zůstávají přímou hranou.
+
 ## Co se děje uvnitř
 
 - `make_sample_pcap.py` — `scapy.wrpcap` zapíše pár ručně sestavených paketů.
@@ -55,5 +83,9 @@ bez `--iface` se použije výchozí rozhraní scapy). Ctrl-C ukončí.
   paket; časování drží rozestupy podle pcap razítek (dělené `--speed`).
 - `live_capture.py` — `scapy.sniff(prn=…)` volá handler za každý paket;
   uzly/hrany se přidávají líně, tok se vyšle hned.
+- `live_route.py` — jako `live_capture.py`, navíc na pozadí spustí
+  `traceroute` (scapy `sr1` s rostoucím TTL), routery po cestě přidá jako
+  uzly a paket vyšle jako multi-hop tok `canvas.flow(path=[…])`. Cesty drží
+  `RouteTable` (cache + paralelní výpočet).
 
 Pakety bez IP vrstvy (ARP apod.) se přeskakují.
