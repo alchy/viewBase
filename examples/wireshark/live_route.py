@@ -160,7 +160,8 @@ class RouteTable:
         return route
 
     def path_for(self, route: Route, src: str) -> list:
-        """Cesta orientovaná tak, aby path[0] == src (hrany neorientované)."""
+        """Cesta orientovaná tak, aby path[0] == src (hrany neorientované).
+        Precondition: volat jen na READY cestě (jinak route.path je None)."""
         path = route.path
         return path if path[0] == src else list(reversed(path))
 
@@ -184,6 +185,8 @@ class RouteTable:
                     self._ensure_edge(a, b)
                 if len(path) > 2:
                     self._remove_edge(local, remote)   # zruš dočasnou přímou
+            # path zapiš dřív než state — handler čte state/path bez zámku,
+            # takže jakmile vidí READY, path už musí být nastavená.
             self._routes[remote].path = path
             self._routes[remote].state = READY
             for node_id in path[1:-1]:

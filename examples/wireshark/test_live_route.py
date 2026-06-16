@@ -220,3 +220,31 @@ def test_pending_keeps_temp_edge_until_traceroute_runs():
     pool.run_all()
     assert route.state == lr.READY
     assert _edge_key("192.168.1.5", "8.8.8.8") not in _edge_keys(c)
+
+
+def test_traceroute_exception_degrades_to_direct():
+    def tracer(remote):
+        raise OSError("traceroute selhal")
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    route = table.get_or_start("192.168.1.5", "8.8.8.8")
+    assert route.state == lr.READY                  # výjimka → prázdné hopy
+    assert route.path == ["192.168.1.5", "8.8.8.8"]
+    assert _edge_key("192.168.1.5", "8.8.8.8") in _edge_keys(c)
+
+
+def test_ensure_direct_adds_nodes_and_edge_idempotently():
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=lambda remote: [], pool=InlinePool())
+    table.ensure_direct("192.168.1.5", "192.168.1.20")
+    table.ensure_direct("192.168.1.5", "192.168.1.20")   # podruhé nesmí spadnout
+    assert _node_ids(c) == {"192.168.1.5", "192.168.1.20"}
+    assert _edge_key("192.168.1.5", "192.168.1.20") in _edge_keys(c)
+
+
+def test_build_canvas_sets_node_label_template():
+    c = lr.build_canvas()
+    c.add_node("8.8.8.8", type="host", ip="8.8.8.8", fqdn="dns.google")
+    node = c.snapshot()["nodes"][0]
+    assert node["label"] == "dns.google [8.8.8.8]"   # šablona {fqdn} [{ip}]
