@@ -248,3 +248,70 @@ def test_build_canvas_sets_node_label_template():
     c.add_node("8.8.8.8", type="host", ip="8.8.8.8", fqdn="dns.google")
     node = c.snapshot()["nodes"][0]
     assert node["label"] == "dns.google [8.8.8.8]"   # šablona {fqdn} [{ip}]
+
+
+# ---- make_handler -------------------------------------------------------
+
+from scapy.all import IP as _IP, TCP as _TCP, UDP as _UDP
+
+
+def _flow_actions(canvas):
+    return [a for a in canvas.drain_actions() if a["action"] == "flow"]
+
+
+def test_handler_flows_along_path_when_ready():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())   # READY hned
+    handler = lr.make_handler(c, table, {"192.168.1.5"})
+    handler(_IP(src="192.168.1.5", dst="8.8.8.8") / _TCP(sport=4444, dport=80))
+    flows = _flow_actions(c)
+    assert flows[-1]["path"] == ["192.168.1.5", "10.0.0.1", "8.8.8.8"]
+    assert flows[-1]["flow_type"] == "http"
+
+
+def test_handler_direct_while_pending_then_multihop():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    pool = DeferPool()
+    table = lr.RouteTable(c, tracer=tracer, pool=pool)
+    handler = lr.make_handler(c, table, {"192.168.1.5"})
+    pkt = _IP(src="192.168.1.5", dst="8.8.8.8") / _UDP(sport=4000, dport=9999)
+    handler(pkt)                                    # PENDING → přímý tok
+    assert _flow_actions(c)[-1]["path"] == ["192.168.1.5", "8.8.8.8"]
+    pool.run_all()                                  # traceroute doběhne
+    handler(pkt)                                    # READY → multi-hop tok
+    assert _flow_actions(c)[-1]["path"] == ["192.168.1.5", "10.0.0.1", "8.8.8.8"]
+
+
+def test_handler_lan_uses_direct_edge_without_traceroute():
+    calls = []
+
+    def tracer(remote):
+        calls.append(remote)
+        return []
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    handler = lr.make_handler(c, table, {"192.168.1.5"})
+    handler(_IP(src="192.168.1.5", dst="192.168.1.20") / _UDP(sport=1, dport=2))
+    assert calls == []                              # LAN → žádný traceroute
+    assert _flow_actions(c)[-1]["path"] == ["192.168.1.5", "192.168.1.20"]
+
+
+def test_handler_ignores_known_hop_and_non_ip():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    handler = lr.make_handler(c, table, {"192.168.1.5"})
+    handler(_IP(src="192.168.1.5", dst="8.8.8.8") / _TCP(sport=1, dport=80))
+    c.drain_actions()                               # spotřebuj dosavadní akce
+    # paket od objeveného routeru (naše traceroute proba) → ignoruj
+    handler(_IP(src="10.0.0.1", dst="192.168.1.5") / _IP())  # type-exceeded-like
+    assert _flow_actions(c) == []

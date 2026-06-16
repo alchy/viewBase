@@ -247,3 +247,64 @@ def build_canvas() -> vb.Canvas:
     canvas.detail_window(
         rows=[("FQDN", "fqdn"), ("IP", "ip"), ("role", "role")], width_chars=42)
     return canvas
+
+
+def make_handler(canvas: vb.Canvas, table: RouteTable, locals_set: set):
+    """Vrať on_packet: pro globální cíl pošle tok po cestě (po doběhu
+    traceroute), do té doby po dočasné přímé hraně; LAN po přímé hraně."""
+    def on_packet(pkt) -> None:
+        if not pkt.haslayer(IP):
+            return
+        src = pkt[IP].src
+        dst = pkt[IP].dst
+        if src == dst:
+            return
+        local, remote = orient(src, dst, locals_set)
+        if remote is None or table.is_known_hop(remote):
+            return                                  # nejednoznačné / naše proby
+        proto = classify(pkt)
+        if not is_global(remote):
+            table.ensure_direct(local, remote)      # LAN: přímá hrana
+            canvas.flow(src, dst, type=proto, count=1, interval=0.05)
+            return
+        route = table.get_or_start(local, remote)
+        if route.state == READY:
+            canvas.flow(path=table.path_for(route, src), type=proto,
+                        count=1, interval=0.05)
+        else:
+            canvas.flow(src, dst, type=proto, count=1, interval=0.05)
+    return on_packet
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Živý odposlech s cestou paketu (traceroute) → graf toků")
+    parser.add_argument("--iface", default=None,
+                        help="síťové rozhraní (např. en0, eth0); default = výchozí")
+    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--max-hops", type=int, default=30,
+                        help="maximální TTL traceroute (default 30)")
+    parser.add_argument("--timeout", type=float, default=1.0,
+                        help="timeout odpovědi na hop v sekundách (default 1.0)")
+    parser.add_argument("--workers", type=int, default=8,
+                        help="počet paralelních traceroute (default 8)")
+    args = parser.parse_args()
+
+    canvas = build_canvas()
+    resolve = make_resolver(canvas)
+    locals_set = local_addrs(args.iface)
+
+    def tracer(remote):
+        return trace(remote, max_hops=args.max_hops, timeout=args.timeout)
+
+    table = RouteTable(canvas, tracer=tracer, resolver=resolve,
+                       workers=args.workers)
+    handler = make_handler(canvas, table, locals_set)
+    threading.Thread(
+        target=lambda: sniff(iface=args.iface, prn=handler, store=False),
+        daemon=True).start()
+    vb.serve(canvas, port=args.port, open_browser=True)
+
+
+if __name__ == "__main__":
+    main()
