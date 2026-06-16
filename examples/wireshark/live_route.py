@@ -103,3 +103,144 @@ def build_path(local: str, hops: list, remote: str) -> list:
     if path[-1] != remote:
         path.append(remote)
     return path
+
+
+class Route:
+    """Jedna cesta k cíli: stav a (po doběhu) seznam uzlů [local, …, remote]."""
+    def __init__(self):
+        self.state = PENDING
+        self.path = None
+
+
+class RouteTable:
+    """Cache cest k cílům a jejich materializace do canvasu. Thread-safe.
+
+    `tracer(remote)` vrací výstup ve tvaru trace() (seznam (ttl, ip|None));
+    injektovatelný kvůli testům. `pool` musí mít metodu submit(fn, *args);
+    default je ThreadPoolExecutor (paralelní traceroute na pozadí)."""
+
+    def __init__(self, canvas, *, tracer, resolver=None, workers=8, pool=None):
+        self._canvas = canvas
+        self._tracer = tracer
+        self._resolve = resolver or (lambda ip: None)
+        self._pool = pool or ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="traceroute")
+        self._lock = threading.RLock()
+        self._routes = {}        # remote -> Route
+        self._nodes = set()      # ID uzlů, které jsme přidali
+        self._edges = set()      # kanonické klíče hran, které jsme přidali
+        self._hops = set()       # známé router IP (anti-rekurze na vlastní proby)
+
+    # -- veřejné API --
+
+    def is_known_hop(self, ip: str) -> bool:
+        with self._lock:
+            return ip in self._hops
+
+    def ensure_direct(self, local: str, remote: str) -> None:
+        """Přímá hrana local–remote (LAN / fallback) bez traceroute."""
+        with self._lock:
+            self._ensure_node(local, role="host")
+            self._ensure_node(remote, role="host")
+            self._ensure_edge(local, remote)
+
+    def get_or_start(self, local: str, remote: str) -> Route:
+        """Vrať cestu k cíli; novou založí: PENDING + dočasná přímá hrana +
+        traceroute na pozadí. Dedup — jeden traceroute na cíl."""
+        with self._lock:
+            route = self._routes.get(remote)
+            if route is not None:
+                return route
+            route = Route()
+            self._routes[remote] = route
+            self._ensure_node(local, role="host")
+            self._ensure_node(remote, role="host")
+            self._ensure_edge(local, remote)         # dočasná přímá hrana
+        self._pool.submit(self._run, local, remote)
+        return route
+
+    def path_for(self, route: Route, src: str) -> list:
+        """Cesta orientovaná tak, aby path[0] == src (hrany neorientované)."""
+        path = route.path
+        return path if path[0] == src else list(reversed(path))
+
+    # -- interní --
+
+    def _run(self, local: str, remote: str) -> None:
+        try:
+            hops = self._tracer(remote)
+        except Exception:
+            logger.exception("traceroute na %s selhal", remote)
+            hops = []
+        self._materialize(local, remote, build_path(local, hops, remote))
+
+    def _materialize(self, local: str, remote: str, path: list) -> None:
+        with self._lock:
+            with self._canvas.batch():
+                for i, node_id in enumerate(path):
+                    self._ensure_node(
+                        node_id, role=self._role_for(node_id, i, len(path)))
+                for a, b in zip(path, path[1:]):
+                    self._ensure_edge(a, b)
+                if len(path) > 2:
+                    self._remove_edge(local, remote)   # zruš dočasnou přímou
+            self._routes[remote].path = path
+            self._routes[remote].state = READY
+            for node_id in path[1:-1]:
+                if not _is_placeholder(node_id):
+                    self._hops.add(node_id)
+        for node_id in path:                           # DNS na pozadí
+            if not _is_placeholder(node_id):
+                self._resolve(node_id)
+
+    @staticmethod
+    def _role_for(node_id: str, index: int, length: int) -> str:
+        if index == 0 or index == length - 1:
+            return "host"
+        return "unknown" if _is_placeholder(node_id) else "router"
+
+    def _ensure_node(self, node_id: str, *, role: str) -> None:
+        if node_id in self._nodes:
+            return
+        self._nodes.add(node_id)
+        if role == "unknown":
+            self._canvas.add_node(node_id, type="unknown", label="*",
+                                  role="hop", ip="", fqdn="")
+        else:
+            self._canvas.add_node(node_id, type=role, role=role,
+                                  ip=node_id, fqdn="")
+
+    def _ensure_edge(self, a: str, b: str) -> None:
+        if a == b:
+            return
+        key = (a, b) if a <= b else (b, a)
+        if key in self._edges:
+            return
+        self._edges.add(key)
+        self._canvas.add_edge(a, b)
+
+    def _remove_edge(self, a: str, b: str) -> None:
+        key = (a, b) if a <= b else (b, a)
+        if key in self._edges:
+            self._edges.discard(key)
+            self._canvas.remove_edge(a, b)
+
+
+def _is_placeholder(node_id: str) -> bool:
+    return node_id.startswith("*")
+
+
+def build_canvas() -> vb.Canvas:
+    """Canvas pro traceroute ukázku: typy host/router/unknown, flow typy podle
+    protokolu, popisek z meta, detailní okno."""
+    canvas = vb.Canvas(title="Wireshark trasa", theme="cyber",
+                       highlight_neighbors=1)
+    canvas.define_type("host", shape="sphere", color="#28d7fe", size=1.0)
+    canvas.define_type("router", shape="box", color="#05ffa1", size=1.1)
+    canvas.define_type("unknown", shape="tetrahedron", color="#5b6472", size=0.6)
+    for name, color in PROTO_COLORS.items():
+        canvas.define_flow_type(name, color=color, speed=1.0)
+    canvas.node_label("{fqdn} [{ip}]")
+    canvas.detail_window(
+        rows=[("FQDN", "fqdn"), ("IP", "ip"), ("role", "role")], width_chars=42)
+    return canvas

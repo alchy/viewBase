@@ -82,3 +82,141 @@ def test_trace_stops_when_src_equals_dst(monkeypatch):
     replies = iter([_Reply("8.8.8.8", 11)])   # time-exceeded, ale src == dst
     monkeypatch.setattr(lr, "sr1", lambda *a, **k: next(replies))
     assert lr.trace("8.8.8.8", max_hops=10, timeout=0.1) == [(1, "8.8.8.8")]
+
+
+# ---- RouteTable / build_canvas ------------------------------------------
+
+import viewbase as vb
+
+
+class InlinePool:
+    """Fake pool: úlohu spustí hned (deterministické testy materializace)."""
+    def submit(self, fn, *args, **kwargs):
+        fn(*args, **kwargs)
+
+
+class DeferPool:
+    """Fake pool: úlohy odloží, dokud nezavoláš run_all() (test PENDING okna)."""
+    def __init__(self):
+        self.jobs = []
+
+    def submit(self, fn, *args, **kwargs):
+        self.jobs.append((fn, args, kwargs))
+
+    def run_all(self):
+        jobs, self.jobs = self.jobs, []
+        for fn, args, kwargs in jobs:
+            fn(*args, **kwargs)
+
+
+def _edge_key(a, b):
+    return (a, b) if a <= b else (b, a)
+
+
+def _edge_keys(canvas):
+    return {(e["source"], e["target"]) for e in canvas.snapshot()["edges"]}
+
+
+def _node_ids(canvas):
+    return {n["id"] for n in canvas.snapshot()["nodes"]}
+
+
+def test_build_canvas_defines_node_and_flow_types():
+    c = lr.build_canvas()
+    snap = c.snapshot()
+    assert set(snap["node_types"]) == {"host", "router", "unknown"}
+    assert set(snap["flow_types"]) == set(lr.PROTO_COLORS)
+
+
+def test_get_or_start_dedup_runs_traceroute_once():
+    calls = []
+
+    def tracer(remote):
+        calls.append(remote)
+        return [(1, "10.0.0.1"), (2, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    r1 = table.get_or_start("192.168.1.5", "8.8.8.8")
+    r2 = table.get_or_start("192.168.1.5", "8.8.8.8")
+    assert r1 is r2
+    assert calls == ["8.8.8.8"]
+    assert r1.state == lr.READY
+    assert r1.path == ["192.168.1.5", "10.0.0.1", "8.8.8.8"]
+
+
+def test_materialize_adds_path_and_removes_temp_edge():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, "203.0.113.7"), (3, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    table.get_or_start("192.168.1.5", "8.8.8.8")
+    assert _node_ids(c) == {"192.168.1.5", "10.0.0.1", "203.0.113.7", "8.8.8.8"}
+    edges = _edge_keys(c)
+    assert _edge_key("192.168.1.5", "8.8.8.8") not in edges       # dočasná odebrána
+    assert _edge_key("192.168.1.5", "10.0.0.1") in edges
+    assert _edge_key("10.0.0.1", "203.0.113.7") in edges
+    assert _edge_key("203.0.113.7", "8.8.8.8") in edges
+
+
+def test_materialize_silent_hop_is_unknown_placeholder():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, None), (3, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    table.get_or_start("192.168.1.5", "8.8.8.8")
+    ph = lr.placeholder_id("8.8.8.8", 2)
+    nodes = {n["id"]: n for n in c.snapshot()["nodes"]}
+    assert ph in nodes
+    assert nodes[ph]["type"] == "unknown"
+    assert nodes[ph]["label"] == "*"
+
+
+def test_failed_traceroute_keeps_direct_edge():
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=lambda remote: [], pool=InlinePool())
+    route = table.get_or_start("192.168.1.5", "8.8.8.8")
+    assert route.path == ["192.168.1.5", "8.8.8.8"]
+    assert _edge_key("192.168.1.5", "8.8.8.8") in _edge_keys(c)
+
+
+def test_path_for_orients_by_src():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    route = table.get_or_start("192.168.1.5", "8.8.8.8")
+    assert table.path_for(route, "192.168.1.5")[0] == "192.168.1.5"
+    rev = table.path_for(route, "8.8.8.8")
+    assert rev[0] == "8.8.8.8"
+    assert rev[-1] == "192.168.1.5"
+
+
+def test_real_hops_are_known_endpoints_and_placeholders_are_not():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, None), (3, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    table.get_or_start("192.168.1.5", "8.8.8.8")
+    assert table.is_known_hop("10.0.0.1")                       # reálný router
+    assert not table.is_known_hop("8.8.8.8")                     # endpoint (cíl)
+    assert not table.is_known_hop(lr.placeholder_id("8.8.8.8", 2))
+
+
+def test_pending_keeps_temp_edge_until_traceroute_runs():
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    pool = DeferPool()
+    table = lr.RouteTable(c, tracer=tracer, pool=pool)
+    route = table.get_or_start("192.168.1.5", "8.8.8.8")
+    assert route.state == lr.PENDING
+    assert _edge_key("192.168.1.5", "8.8.8.8") in _edge_keys(c)  # dočasná hrana
+    pool.run_all()
+    assert route.state == lr.READY
+    assert _edge_key("192.168.1.5", "8.8.8.8") not in _edge_keys(c)
