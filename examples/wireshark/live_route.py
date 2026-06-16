@@ -263,6 +263,8 @@ def make_handler(canvas: vb.Canvas, table: RouteTable, locals_set: set):
         if remote is None or table.is_known_hop(remote):
             return                                  # nejednoznačné / naše proby
         proto = classify(pkt)
+        # flow bere src,dst (ne local,remote) → částice letí ve směru paketu;
+        # hrana je neorientovaná, takže pořadí pro validaci nehraje roli.
         if not is_global(remote):
             table.ensure_direct(local, remote)      # LAN: přímá hrana
             canvas.flow(src, dst, type=proto, count=1, interval=0.05)
@@ -270,7 +272,7 @@ def make_handler(canvas: vb.Canvas, table: RouteTable, locals_set: set):
         route = table.get_or_start(local, remote)
         if route.state == READY:
             canvas.flow(path=table.path_for(route, src), type=proto,
-                        count=1, interval=0.05)
+                        count=1, interval=0.05)     # path_for orientuje dle src
         else:
             canvas.flow(src, dst, type=proto, count=1, interval=0.05)
     return on_packet

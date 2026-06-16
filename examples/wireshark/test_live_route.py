@@ -252,7 +252,7 @@ def test_build_canvas_sets_node_label_template():
 
 # ---- make_handler -------------------------------------------------------
 
-from scapy.all import IP as _IP, TCP as _TCP, UDP as _UDP
+from scapy.all import Ether as _Ether, IP as _IP, TCP as _TCP, UDP as _UDP
 
 
 def _flow_actions(canvas):
@@ -314,4 +314,7 @@ def test_handler_ignores_known_hop_and_non_ip():
     c.drain_actions()                               # spotřebuj dosavadní akce
     # paket od objeveného routeru (naše traceroute proba) → ignoruj
     handler(_IP(src="10.0.0.1", dst="192.168.1.5") / _IP())  # type-exceeded-like
+    assert _flow_actions(c) == []
+    # paket bez IP vrstvy (ARP apod.) → handler ho přeskočí, nespadne
+    handler(_Ether())
     assert _flow_actions(c) == []
