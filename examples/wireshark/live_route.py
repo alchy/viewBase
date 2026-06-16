@@ -253,28 +253,36 @@ def make_handler(canvas: vb.Canvas, table: RouteTable, locals_set: set):
     """Vrať on_packet: pro globální cíl pošle tok po cestě (po doběhu
     traceroute), do té doby po dočasné přímé hraně; LAN po přímé hraně."""
     def on_packet(pkt) -> None:
-        if not pkt.haslayer(IP):
-            return
-        src = pkt[IP].src
-        dst = pkt[IP].dst
-        if src == dst:
-            return
-        local, remote = orient(src, dst, locals_set)
-        if remote is None or table.is_known_hop(remote):
-            return                                  # nejednoznačné / naše proby
-        proto = classify(pkt)
-        # flow bere src,dst (ne local,remote) → částice letí ve směru paketu;
-        # hrana je neorientovaná, takže pořadí pro validaci nehraje roli.
-        if not is_global(remote):
-            table.ensure_direct(local, remote)      # LAN: přímá hrana
-            canvas.flow(src, dst, type=proto, count=1, interval=0.05)
-            return
-        route = table.get_or_start(local, remote)
-        if route.state == READY:
-            canvas.flow(path=table.path_for(route, src), type=proto,
-                        count=1, interval=0.05)     # path_for orientuje dle src
-        else:
-            canvas.flow(src, dst, type=proto, count=1, interval=0.05)
+        # Sniff callback nesmí nikdy spadnout – výjimka by zabila odposlech.
+        # Tok běží bez zámku, takže může vzácně narazit na cestu právě
+        # přestavovanou jiným vláknem (dočasná hrana zmizí) → ValueError;
+        # i scapy umí na divném paketu hodit. Paket pak jen zahodíme.
+        try:
+            if not pkt.haslayer(IP):
+                return
+            src = pkt[IP].src
+            dst = pkt[IP].dst
+            if src == dst:
+                return
+            local, remote = orient(src, dst, locals_set)
+            if remote is None or table.is_known_hop(remote):
+                return                              # nejednoznačné / naše proby
+            proto = classify(pkt)
+            # flow bere src,dst (ne local,remote) → částice letí ve směru
+            # paketu; hrana je neorientovaná, pořadí pro validaci nehraje roli.
+            if not is_global(remote):
+                table.ensure_direct(local, remote)  # LAN: přímá hrana
+                canvas.flow(src, dst, type=proto, count=1, interval=0.05)
+                return
+            route = table.get_or_start(local, remote)
+            if route.state == READY:
+                canvas.flow(path=table.path_for(route, src), type=proto,
+                            count=1, interval=0.05)  # path_for orientuje dle src
+            else:
+                canvas.flow(src, dst, type=proto, count=1, interval=0.05)
+        except Exception:
+            logger.debug("paket přeskočen kvůli výjimce v handleru",
+                         exc_info=True)
     return on_packet
 
 

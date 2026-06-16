@@ -53,8 +53,10 @@ cesty **klíčují podle vzdáleného endpointu**.
 - `PENDING` — traceroute běží; je nakreslená dočasná přímá hrana, pakety tečou
   po ní.
 - `READY` — cesta `path = [local, …, remote]` známá; pakety tečou po ní.
-- `FAILED` → degraduje na `READY` s `path = [local, remote]` (trvalá přímá
-  hrana), když traceroute nedal žádnou použitelnou informaci.
+
+Selhání traceroute není samostatný stav: výjimka nebo prázdný výsledek se v
+`_run` přemění na `hops=[]`, `build_path` vrátí `[local, remote]` a cesta
+skončí jako `READY` s trvalou přímou hranou (degradace na dnešní chování).
 
 ## Komponenty (vše v `live_route.py`)
 
@@ -74,9 +76,11 @@ Tenké, jednoúčelové jednotky:
   neodpověděl → připojí se za poslední (i placeholder) hop, aby graf zůstal
   souvislý). Čistá funkce — testovatelná bez sítě i canvasu.
 - **`RouteTable`** — *jádro*: cache cest + materializace do canvasu. Drží
-  `_routes: dict[str, Route]`, `_inflight: set[str]`, `_hops: set[str]` (známé
-  router IP), `_nodes: set[str]`, `_edges: set[tuple]`, `_lock: RLock`,
-  `_pool: ThreadPoolExecutor`. Metody:
+  `_routes: dict[str, Route]`, `_hops: set[str]` (známé router IP),
+  `_nodes: set[str]`, `_edges: set[tuple]`, `_lock: RLock`,
+  `_pool: ThreadPoolExecutor`. Dedup zajišťuje samo `_routes` (cesta se vloží
+  pod zámkem před `submit`, takže souběžný `get_or_start` najde existující a
+  vrátí ji – samostatný `_inflight` není potřeba). Metody:
   - `get_or_start(local, remote) -> Route` — pod zámkem: pokud cesta není,
     založí `PENDING`, přidá uzly, **dočasnou přímou hranu**, a `pool.submit`
     traceroute (dedup: jeden traceroute na cíl).
@@ -126,7 +130,7 @@ resolve(ip) pro reálné router IP        # DNS na pozadí, doplní popisek
 
 - Traceroute běží v `ThreadPoolExecutor(max_workers=--workers)`; každá cesta je
   nezávislá → paralelně.
-- Cache (`_routes` + `_inflight`) zaručí jeden traceroute na cíl.
+- Cache `_routes` zaručí jeden traceroute na cíl.
 - Sniff handler **nikdy neblokuje** na traceroute (fire-and-submit).
 - Mutace canvasu jsou thread-safe (Canvas má vlastní zámek); `RouteTable._lock`
   chrání jen vlastní cache/sety.
@@ -134,9 +138,14 @@ resolve(ip) pro reálné router IP        # DNS na pozadí, doplní popisek
 ## Ošetřené pasti
 
 - **Zpětná vazba prób:** naše traceroute proby (echo k cíli, time-exceeded od
-  routerů) sniff také zachytí. `_inflight` brání druhému traceroute na týž cíl;
-  `_hops` brání tracerouting na vlastní objevené routery (paket od/na známý hop
-  se ignoruje, žádná nová cesta). Tím se odřízne rekurze.
+  routerů) sniff také zachytí. Echo-reply od cíle dedupuje `_routes` (cíl už má
+  cestu → žádný nový traceroute). Time-exceeded od **už objeveného** routeru
+  odřízne `_hops` (paket od/na známý hop se ignoruje). Zbývá tranzientní okno:
+  time-exceeded od routeru, který ještě není v `_hops` (jeho `_materialize`
+  nedoběhl, nebo se zatím objevoval jen jako tichý hop), spustí traceroute i na
+  něj. Není to runaway — je to omezené (jeden traceroute na IP, pak v `_routes`)
+  a konverguje dovnitř (cesta k routeru je prefixem už známých cest), takže to
+  jen krátce navýší provoz, než se `_hops` naplní.
 - **Směr toku:** cesta se ukládá `[local … remote]`; pro konkrétní paket se
   otočí podle `src`, takže částice letí ve správném směru i pro příchozí pakety.
 - **Cíl neodpověděl:** `remote` se připojí za poslední (i placeholder) hop —

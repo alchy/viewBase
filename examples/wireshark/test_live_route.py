@@ -318,3 +318,22 @@ def test_handler_ignores_known_hop_and_non_ip():
     # paket bez IP vrstvy (ARP apod.) → handler ho přeskočí, nespadne
     handler(_Ether())
     assert _flow_actions(c) == []
+
+
+def test_handler_swallows_flow_exception(monkeypatch):
+    """Závod: cesta se přestaví (dočasná hrana zmizí) v okně mezi čtením stavu
+    a vysláním toku → canvas.flow hodí ValueError. Handler ho musí spolknout,
+    jinak by spadlo sniff vlákno."""
+    def tracer(remote):
+        return [(1, "10.0.0.1"), (2, "8.8.8.8")]
+
+    c = lr.build_canvas()
+    table = lr.RouteTable(c, tracer=tracer, pool=InlinePool())
+    handler = lr.make_handler(c, table, {"192.168.1.5"})
+
+    def boom(*args, **kwargs):
+        raise ValueError("hrana právě zmizela")
+
+    monkeypatch.setattr(c, "flow", boom)
+    handler(_IP(src="192.168.1.5", dst="8.8.8.8") / _TCP(sport=1, dport=80))
+    # žádná výjimka nepropadla = test prošel
