@@ -71,7 +71,7 @@ def local_addrs(iface: str | None = None) -> set:
     return {a for a in addrs if a and a != "0.0.0.0"}
 
 
-def placeholder_id(remote: str, ttl: str) -> str:
+def placeholder_id(remote: str, ttl: int) -> str:
     """ID placeholder uzlu pro tichý hop — unikátní per (cíl, TTL)."""
     return f"*{remote}#{ttl}"
 
