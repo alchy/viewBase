@@ -50,6 +50,8 @@ export class BaseWindow {
   }
 
   // -- hooky podtřídy --
+  // Pozn.: konstruktor BaseWindow _buildBody NEVOLÁ – podtřída ho zavolá sama
+  // až po nastavení svých polí (jinak by četl pole před super()).
   _buildBody() { /* podtřída: vytvoř this.body a připoj do this.el */ }
   _renderBody() { /* podtřída: refresh při tématu / obnově */ }
 

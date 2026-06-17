@@ -28,6 +28,24 @@ describe('clampValue', () => {
     expect(clampValue(enumField, 'spline')).toBe('spline');
     expect(clampValue(enumField, 'ghost')).toBe('line');
   });
+
+  it('enum s ne-string hodnotou matchne nativní hodnotu', () => {
+    const f = {
+      key: 'm', type: 'enum', value: 0,
+      options: [{ value: 0, label: 'A' }, { value: 1, label: 'B' }],
+    };
+    expect(clampValue(f, 1)).toBe(1);       // nativní číslo projde
+    expect(clampValue(f, '1')).toBe(0);     // string nematchne → fallback value
+  });
+
+  it('string null/undefined → prázdný řetězec', () => {
+    expect(clampValue(strField, null)).toBe('');
+    expect(clampValue(strField, undefined)).toBe('');
+  });
+
+  it('neznámý typ pole → stávající value', () => {
+    expect(clampValue({ type: 'bool', value: true }, 'x')).toBe(true);
+  });
 });
 
 describe('readValues', () => {

@@ -39,7 +39,6 @@ export function windowsToRefresh(patch, openIds) {
 export class DetailWindow extends BaseWindow {
   constructor({ nodeId, title, rows, widthChars, container, manager }) {
     super({ id: nodeId, title, widthChars, container, manager, kind: 'detail' });
-    this.nodeId = nodeId;
     this.rows = rows;
     this._buildBody();
     this._mount();

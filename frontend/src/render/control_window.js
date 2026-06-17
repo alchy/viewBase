@@ -87,11 +87,14 @@ export class ControlWindow extends BaseWindow {
         const o = document.createElement('option');
         o.value = String(opt.value);
         o.textContent = opt.label;
-        if (opt.value === field.value) o.selected = true;
+        if (String(opt.value) === String(field.value)) o.selected = true;
         sel.appendChild(o);
       }
       cell.appendChild(sel);
-      return () => sel.value;
+      // getter vrací NATIVNÍ hodnotu option (sel.value je vždy string), aby
+      // clampValue (o.value === raw) matchnul i ne-string enum hodnoty.
+      return () => field.options.find(
+        (opt) => String(opt.value) === sel.value)?.value ?? field.value;
     }
     if (field.type === 'int') {
       const range = document.createElement('input');
