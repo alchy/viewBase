@@ -9,7 +9,8 @@ PROTOCOL_VERSION = 1
 
 def init_message(*, seq: int, config: dict, node_types: dict,
                  nodes: list, edges: list,
-                 flow_types: dict, flows: list) -> dict[str, Any]:
+                 flow_types: dict, flows: list,
+                 windows: list) -> dict[str, Any]:
     return {
         "type": "init",
         "protocol": PROTOCOL_VERSION,
@@ -20,6 +21,7 @@ def init_message(*, seq: int, config: dict, node_types: dict,
         "edges": edges,
         "flow_types": flow_types,
         "flows": flows,
+        "windows": windows,
     }
 
 

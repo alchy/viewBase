@@ -7,6 +7,7 @@ import threading
 import types
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from .controls import ControlWindow, validate_values
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
 
@@ -54,6 +55,7 @@ class Canvas:
             "quality": quality,
             "detail_window": {
                 "rows": None, "width_chars": 42, "open_on_click": True},
+            "edge_style": {"style": "line", "elasticity": 0.0},
         }
         self._lock = threading.RLock()
         self._nodes: dict[str, dict[str, Any]] = {}
@@ -61,6 +63,8 @@ class Canvas:
         self._node_types: dict[str, dict[str, Any]] = {}
         self._flow_types: dict[str, dict[str, Any]] = {}
         self._flows: dict[str, dict[str, Any]] = {}   # flow_id -> trvalý tok (do init)
+        self._windows: dict[str, ControlWindow] = {}
+        self._window_callbacks: dict[str, Any] = {}
         self._seq = 0
         self._batch_depth = 0
         self._pending = self._empty_pending()
@@ -70,6 +74,7 @@ class Canvas:
         self._actions: list[dict[str, Any]] = []
         self._closed = False
         self._node_label_template: str | None = None
+        self._register("window_submit", self._on_window_submit)
 
     @staticmethod
     def _empty_pending() -> dict[str, dict]:
@@ -210,6 +215,59 @@ class Canvas:
             del self._flows[flow_id]
             self._actions.append({"action": "stop_flow", "flow_id": flow_id})
 
+    # ---- control okna -------------------------------------------------
+
+    def open_window(self, window: ControlWindow, *, on_submit=None) -> str:
+        """Otevři/nahraď parametrické okno: ulož do stavu (pro init replay) a
+        zařaď akci open_window. on_submit dostane event s validovanými values."""
+        with self._lock:
+            self._windows[window.window_id] = window
+            if on_submit is not None:
+                self._window_callbacks[window.window_id] = on_submit
+            else:
+                self._window_callbacks.pop(window.window_id, None)
+            self._actions.append({"action": "open_window", **window.spec()})
+        return window.window_id
+
+    def close_window(self, window_id: str) -> None:
+        """Zavři okno: odeber ze stavu a zařaď akci close_window."""
+        with self._lock:
+            if self._windows.pop(window_id, None) is None:
+                raise ValueError(f"Okno '{window_id}' neexistuje")
+            self._window_callbacks.pop(window_id, None)
+            self._actions.append(
+                {"action": "close_window", "window_id": window_id})
+
+    def set_edge_style(self, style: str, elasticity: float = 0.0) -> None:
+        """Nastav vykreslení hran: 'line' nebo 'spline', elasticity 0..1.
+        Uloží do config (pro init) a zařadí akci set_edge_style."""
+        if style not in ("line", "spline"):
+            raise ValueError("style musí být 'line' nebo 'spline'")
+        elasticity = max(0.0, min(1.0, float(elasticity)))
+        with self._lock:
+            self.config["edge_style"] = {"style": style,
+                                         "elasticity": elasticity}
+            self._actions.append({"action": "set_edge_style", "style": style,
+                                  "elasticity": elasticity})
+
+    def _on_window_submit(self, event) -> None:
+        """Interní handler eventu window_submit: validuj values proti specu
+        okna, ulož je (pro init replay) a zavolej callback okna."""
+        window_id = getattr(event, "window_id", None)
+        raw = getattr(event, "values", None)
+        if not isinstance(raw, dict):
+            return
+        with self._lock:
+            window = self._windows.get(window_id)
+            if window is None:
+                return
+            clean = validate_values(window.spec()["fields"], raw)
+            window.apply(clean)
+            callback = self._window_callbacks.get(window_id)
+        if callback is not None:
+            event.values = clean
+            callback(event)
+
     # ---- uzly ----------------------------------------------------------
 
     def add_node(self, node_id: str, *, type: str | None = None,
@@ -325,6 +383,7 @@ class Canvas:
                 "edges": [self._public_edge(e) for e in self._edges.values()],
                 "flow_types": {n: dict(s) for n, s in self._flow_types.items()},
                 "flows": [dict(f) for f in self._flows.values()],
+                "windows": [w.spec() for w in self._windows.values()],
             }
 
     # ---- delty ---------------------------------------------------------

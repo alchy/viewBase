@@ -20,7 +20,8 @@ def test_config_in_snapshot():
     assert cfg == {"title": "T", "dimensions": 2, "theme": "cyber",
                    "highlight_neighbors": 2, "quality": "auto",
                    "detail_window": {"rows": None, "width_chars": 42,
-                                     "open_on_click": True}}
+                                     "open_on_click": True},
+                   "edge_style": {"style": "line", "elasticity": 0.0}}
 
 
 def test_invalid_dimensions_raises():

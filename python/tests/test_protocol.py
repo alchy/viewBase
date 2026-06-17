@@ -7,7 +7,7 @@ def test_init_roundtrip():
     msg = protocol.init_message(
         seq=3, config={"dimensions": 3}, node_types={},
         nodes=[{"id": "a"}], edges=[],
-        flow_types={}, flows=[],
+        flow_types={}, flows=[], windows=[],
     )
     decoded = protocol.decode(protocol.encode(msg))
     assert decoded == msg
