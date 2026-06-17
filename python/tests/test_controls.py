@@ -46,11 +46,24 @@ def test_enum_empty_options_raises():
         ControlWindow("w").enum("e", "E", options=[], value=None)
 
 
+def test_enum_value_not_in_options_raises():
+    with pytest.raises(ValueError):
+        ControlWindow("w").enum("e", "E", options=["a", "b"], value="c")
+
+
 def test_validate_clamps_int():
     f = _fields()
     assert validate_values(f, {"n": 250}) == {"n": 100}
     assert validate_values(f, {"n": -5}) == {"n": 0}
     assert validate_values(f, {"n": 42}) == {"n": 42}
+
+
+def test_validate_int_coerces_float():
+    assert validate_values(_fields(), {"n": 3.9}) == {"n": 3}
+
+
+def test_validate_string_non_str_dropped():
+    assert validate_values(_fields(), {"s": 42}) == {}
 
 
 def test_validate_int_non_numeric_dropped():

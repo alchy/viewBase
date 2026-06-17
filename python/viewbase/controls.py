@@ -55,6 +55,8 @@ class ControlWindow:
         norm = _normalize_options(options)
         if not norm:
             raise ValueError("enum: options nesmí být prázdné")
+        if value not in {opt["value"] for opt in norm}:
+            raise ValueError("enum: value musí být jedna z options")
         self._fields.append({
             "key": key, "label": label, "type": "enum",
             "value": value, "options": norm,
