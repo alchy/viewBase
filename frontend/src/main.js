@@ -86,6 +86,10 @@ function bootstrap() {
   store.subscribe((event) => {
     if (event.kind !== 'init') return;
     renderer.flowController.replayInit(store.flows ?? []);
+    renderer.setEdgeStyle(store.config.edge_style ?? { style: 'line', elasticity: 0 });
+    for (const spec of store.windows ?? []) {
+      windowManager.openControl(spec, submitWindow);
+    }
     applyTheme(store.config.theme);
     if (store.config.title) {
       document.title = `${store.config.title} – viewbase`;
@@ -100,6 +104,10 @@ function bootstrap() {
     // 'high': žádný watchdog, nikdy nedegradovat
   });
 
+  function submitWindow(payload) {
+    connection.send(buildEvent('window_submit', payload));
+  }
+
   const actions = {
     show_detail: (msg) => windowManager.openFor(msg.node_id),
     focus: (msg) => renderer.focusOn(msg.node_id),
@@ -110,6 +118,9 @@ function bootstrap() {
       store.config.theme = msg.theme;     // reconnect → init už ponese nové téma
       applyTheme(msg.theme);
     },
+    open_window: (msg) => windowManager.openControl(msg, submitWindow),
+    close_window: (msg) => windowManager.closeControl(msg.window_id),
+    set_edge_style: (msg) => renderer.setEdgeStyle(msg),
   };
 
   const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';
