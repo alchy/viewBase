@@ -53,5 +53,20 @@ def provoz():
         canvas.update_node(cl, color="#05ffa1", status="idle")
 
 
+# control okno: přepínání stylu hran (čára/splajn) + elasticita
+_render_win = vb.ControlWindow("render", title="Vykreslování")
+_render_win.enum("style", "Hrany",
+                 options=[("line", "Čáry"), ("spline", "Splajny")],
+                 value="line")
+_render_win.integer("elasticity", "Elasticita", min=0, max=100, value=30)
+
+
+def _apply_render(event):
+    canvas.set_edge_style(event.values["style"],
+                          elasticity=event.values["elasticity"] / 100)
+
+
+canvas.open_window(_render_win, on_submit=_apply_render)
+
 threading.Thread(target=provoz, daemon=True).start()
 vb.serve(canvas, port=8080, open_browser=True)
