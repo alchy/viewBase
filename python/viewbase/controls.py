@@ -67,8 +67,16 @@ class ControlWindow:
         return {
             "window_id": self.window_id,
             "title": self.title,
-            "fields": [dict(f) for f in self._fields],
+            "fields": [self._copy_field(f) for f in self._fields],
         }
+
+    @staticmethod
+    def _copy_field(field: dict) -> dict:
+        """Nezávislá kopie pole (i vnořený seznam options u enum)."""
+        copied = dict(field)
+        if "options" in copied:
+            copied["options"] = [dict(o) for o in copied["options"]]
+        return copied
 
     def apply(self, values: dict[str, Any]) -> None:
         """Přepiš value u polí podle (už zvalidovaných) hodnot."""

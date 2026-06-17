@@ -7,9 +7,10 @@ import threading
 import types
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from .controls import ControlWindow, validate_values
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
+
+from .controls import ControlWindow, validate_values
 
 logger = logging.getLogger("viewbase")
 
@@ -219,14 +220,16 @@ class Canvas:
 
     def open_window(self, window: ControlWindow, *, on_submit=None) -> str:
         """Otevři/nahraď parametrické okno: ulož do stavu (pro init replay) a
-        zařaď akci open_window. on_submit dostane event s validovanými values."""
+        zařaď akci open_window. on_submit dostane event s validovanými values.
+        Pozor: při nahrazení okna stejného window_id bez on_submit se předchozí
+        callback zruší – chceš-li ho zachovat, předej on_submit znovu."""
         with self._lock:
             self._windows[window.window_id] = window
             if on_submit is not None:
                 self._window_callbacks[window.window_id] = on_submit
             else:
                 self._window_callbacks.pop(window.window_id, None)
-            self._actions.append({"action": "open_window", **window.spec()})
+            self._actions.append({**window.spec(), "action": "open_window"})
         return window.window_id
 
     def close_window(self, window_id: str) -> None:

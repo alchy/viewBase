@@ -31,6 +31,21 @@ def test_open_window_replace_same_id():
     assert len(c.snapshot()["windows"]) == 1
 
 
+def test_replace_without_on_submit_clears_callback():
+    c = Canvas()
+    fired = threading.Event()
+    c.open_window(_win(), on_submit=lambda e: fired.set())
+    c.open_window(_win())          # nahrazení bez on_submit → callback zrušen
+    c.dispatch_event("window_submit",
+                     {"window_id": "render",
+                      "values": {"style": "spline"}, "client_id": "x"})
+    assert not fired.wait(0.3)     # callback se nesmí spustit
+    fields = {f["key"]: f["value"]
+              for f in c.snapshot()["windows"][0]["fields"]}
+    assert fields["style"] == "spline"   # apply běží nezávisle na callbacku
+    c.close()
+
+
 def test_close_window_removes_and_queues():
     c = Canvas()
     c.open_window(_win())
