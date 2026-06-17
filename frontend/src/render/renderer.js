@@ -7,6 +7,7 @@ import { resolveTheme } from '../themes/manager.js';
 import { nodeStyle } from './style.js';
 import { LabelLayer } from './labels.js';
 import { FlowController, FlowLayer } from './flow.js';
+import { bezierEdgePoints, EDGE_SEGMENTS } from './edges.js';
 
 const SMOOTHING = 8;            // 1/s – rychlost dobíhání zobrazené pozice k fyzice
 const DIM_TOWARD_BG = 0.75;     // ztlumené uzly: 75 % cesty k barvě pozadí
@@ -62,6 +63,8 @@ export class Renderer {
 
     this.edgeCapacity = 0;
     this.edgeLines = null;
+    this.edgeStyle = 'line';        // 'line' | 'spline'
+    this.edgeElasticity = 0;        // 0..1
     this._ensureEdgeCapacity(4096);
 
     this.clock = new THREE.Clock();
@@ -112,6 +115,13 @@ export class Renderer {
     this.labels.applyTheme(theme);
     this.flows.applyTheme(theme);
     this._syncBloom();
+  }
+
+  /** Styl hran z akce/initu: 'line' nebo 'spline' + elasticita 0..1.
+   *  Bez rebuildu – přepočet je per-frame v _syncEdges. */
+  setEdgeStyle({ style, elasticity } = {}) {
+    this.edgeStyle = style === 'spline' ? 'spline' : 'line';
+    this.edgeElasticity = Math.max(0, Math.min(1, elasticity ?? 0));
   }
 
   /** Vytvoří/zruší EffectComposer podle theme.bloom (a quality degradace).
@@ -236,9 +246,9 @@ export class Renderer {
     return mesh;
   }
 
-  _ensureEdgeCapacity(count) {
-    if (count <= this.edgeCapacity) return;
-    const capacity = Math.max(4096, 2 ** Math.ceil(Math.log2(count)));
+  _ensureEdgeCapacity(vertexCount) {
+    if (vertexCount <= this.edgeCapacity) return;
+    const capacity = Math.max(8192, 2 ** Math.ceil(Math.log2(vertexCount)));
     if (this.edgeLines) {
       this.scene.remove(this.edgeLines);
       this.edgeLines.geometry.dispose();
@@ -246,7 +256,7 @@ export class Renderer {
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position',
-      new THREE.BufferAttribute(new Float32Array(capacity * 6), 3));
+      new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
     geometry.setDrawRange(0, 0);
     this.edgeLines = new THREE.LineSegments(geometry,
       new THREE.LineBasicMaterial({
@@ -256,7 +266,7 @@ export class Renderer {
       }));
     this.edgeLines.frustumCulled = false;
     this.scene.add(this.edgeLines);
-    this.edgeCapacity = capacity;
+    this.edgeCapacity = capacity;   // ve VRCHOLECH
   }
 
   start() {
@@ -364,18 +374,27 @@ export class Renderer {
 
   _syncEdges() {
     const { edges } = this.store;
-    this._ensureEdgeCapacity(edges.size);
+    const spline = this.edgeStyle === 'spline' && this.edgeElasticity > 0;
+    const perEdge = spline ? EDGE_SEGMENTS * 2 : 2;   // vrcholů na hranu
+    this._ensureEdgeCapacity(edges.size * perEdge);
     const attr = this.edgeLines.geometry.getAttribute('position');
-    let i = 0;
+    let v = 0;                                        // index vrcholu
     for (const edge of edges.values()) {
       const a = this.display.get(edge.source);
       const b = this.display.get(edge.target);
       if (!a || !b) continue;
-      attr.setXYZ(i * 2, a.x, a.y, a.z);
-      attr.setXYZ(i * 2 + 1, b.x, b.y, b.z);
-      i += 1;
+      if (spline) {
+        const pts = bezierEdgePoints(a, b, this.edgeElasticity, EDGE_SEGMENTS);
+        for (let i = 0; i < pts.length - 1; i += 1) {
+          attr.setXYZ(v, pts[i].x, pts[i].y, pts[i].z); v += 1;
+          attr.setXYZ(v, pts[i + 1].x, pts[i + 1].y, pts[i + 1].z); v += 1;
+        }
+      } else {
+        attr.setXYZ(v, a.x, a.y, a.z); v += 1;
+        attr.setXYZ(v, b.x, b.y, b.z); v += 1;
+      }
     }
-    this.edgeLines.geometry.setDrawRange(0, i * 2);
+    this.edgeLines.geometry.setDrawRange(0, v);
     attr.needsUpdate = true;
   }
 
