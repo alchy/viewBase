@@ -39,4 +39,10 @@ describe('bezierEdgePoints', () => {
       0.5, 8)[4];
     expect(Math.hypot(p.x, p.z)).toBeGreaterThan(0);
   });
+
+  it('nulová hrana (a === b) nepadne, vrátí segments+1 koincidentních bodů', () => {
+    const p = bezierEdgePoints(a, a, 0.5, 4);
+    expect(p.length).toBe(5);
+    expect(p[2]).toEqual({ x: 0, y: 0, z: 0 });
+  });
 });

@@ -65,7 +65,7 @@ export class Renderer {
     this.edgeLines = null;
     this.edgeStyle = 'line';        // 'line' | 'spline'
     this.edgeElasticity = 0;        // 0..1
-    this._ensureEdgeCapacity(4096);
+    this._ensureEdgeCapacity(8192);   // ve VRCHOLECH (počáteční strop)
 
     this.clock = new THREE.Clock();
     this._matrix = new THREE.Matrix4();
@@ -375,6 +375,8 @@ export class Renderer {
   _syncEdges() {
     const { edges } = this.store;
     const spline = this.edgeStyle === 'spline' && this.edgeElasticity > 0;
+    // pozn.: spline alokuje body per-frame; pro velmi velké grafy by šlo psát
+    // přímo do BufferAttribute (default je 'line', takže to teď neřešíme).
     const perEdge = spline ? EDGE_SEGMENTS * 2 : 2;   // vrcholů na hranu
     this._ensureEdgeCapacity(edges.size * perEdge);
     const attr = this.edgeLines.geometry.getAttribute('position');
