@@ -86,11 +86,11 @@ function bootstrap() {
   store.subscribe((event) => {
     if (event.kind !== 'init') return;
     renderer.flowController.replayInit(store.flows ?? []);
+    applyTheme(store.config.theme);   // téma (i CSS proměnné oken) nastav dřív
     renderer.setEdgeStyle(store.config.edge_style ?? { style: 'line', elasticity: 0 });
     for (const spec of store.windows ?? []) {
       windowManager.openControl(spec, submitWindow);
     }
-    applyTheme(store.config.theme);
     if (store.config.title) {
       document.title = `${store.config.title} – viewbase`;
     }
