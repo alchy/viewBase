@@ -2,11 +2,13 @@
 
 **Živá 2D/3D force-graph vizualizace ovládaná z Pythonu.**
 
-Knihovna, kterou i junior vývojář v Pythonu postaví interaktivní vizualizaci
-vztahů (graf) v ploše nebo prostoru — bez psaní JavaScriptu, bez npm, bez
-znalosti Three.js. Python je zdroj pravdy pro *data, vzhled a chování*;
-prohlížeč počítá *rozmístění* (fyzika běží lokálně) a vykresluje. Díky tomu
-je obraz plynulý a knihovna zvládá tisíce až desítky tisíc uzlů.
+Knihovna, kterou i junior v Pythonu postaví interaktivní vizualizaci vztahů
+(graf) v ploše nebo prostoru — bez psaní JavaScriptu, bez npm, bez znalosti
+Three.js. Python je zdroj pravdy pro *data, vzhled a chování*; prohlížeč počítá
+*rozmístění* (fyzika běží lokálně) a vykresluje. Díky tomu je obraz plynulý a
+knihovna zvládá tisíce až desítky tisíc uzlů.
+
+![viewbase – 3D force-graph, téma cyber](docs/images/hero.png)
 
 ```python
 import viewbase as vb
@@ -31,8 +33,7 @@ obrací:
   *O(n log n)*) — obraz je plynulý na 60 fps, pozice uzlů po síti vůbec
   necestují.
 - **Instancovaný rendering** (Three.js `InstancedMesh`) — počet draw callů
-  nezávisí na počtu uzlů; popisky jsou SDF text ve WebGL s LOD rozpočtem,
-  ne tisíce DOM elementů.
+  nezávisí na počtu uzlů; popisky jsou SDF text ve WebGL s LOD rozpočtem.
 - **Server posílá jen delty** (přidej/změň/odeber uzel·hranu, akce) přes
   WebSocket; graf se může za běhu průběžně přestavovat.
 
@@ -42,9 +43,6 @@ Naměřeno (Apple M4 Pro, headless Chromium): **3 000 uzlů ~120 fps**,
 ---
 
 ## Instalace a spuštění
-
-Knihovna zatím není na PyPI — instaluje se ze zdrojů (frontend se sestaví do
-balíčku, koncový uživatel npm nepotřebuje):
 
 ```bash
 git clone <repo> && cd viewBase
@@ -61,172 +59,91 @@ python examples/quickstart.py     # otevře http://127.0.0.1:8080
 
 ---
 
-## Základní API
+## Ukázky
+
+Spustitelné příklady jsou živá dokumentace — viz tabulka v sekci
+[Dokumentace](#dokumentace). Pár výřezů:
+
+### Control okno: vzhled grafu řízený z backendu
+
+Backend definuje **parametrické okno** (typovaná pole int/string/enum); uživatel
+hodnoty změní a tlačítkem *Použít* je pošle zpět, backend podle nich řídí graf.
+Tady přepíná hrany mezi **čarami** a **splajny** (bezier) a jejich elasticitu —
+týž graf, jen přepnutý přepínač:
+
+| Čáry | Splajny |
+|---|---|
+| ![Hrany jako čáry](docs/images/edges-lines.png) | ![Hrany jako splajny](docs/images/edges-splines.png) |
+
+### 2D ortografický režim
+
+`Canvas(dimensions=2)` přepne na 2D s pan/zoom:
+
+![2D režim](docs/images/mode-2d.png)
+
+---
+
+## Klíčové koncepty
 
 Vše se točí kolem objektu `Canvas`. Po nastavení grafu zavoláš `vb.serve(canvas)`,
 což spustí server a zablokuje; mutace canvasu pak dělej z jiných vláken (Canvas
 je thread-safe).
 
-### Canvas
-
 ```python
-canvas = vb.Canvas(
-    title="Infrastruktura",
-    dimensions=3,            # 2 (ortho, pan/zoom) nebo 3 (orbit)
-    theme="cyber",           # "modern" | "cyber" | vlastní dict
-    highlight_neighbors=1,   # klik zvýrazní sousedy do N úrovní (0 = vypnuto)
-    quality="auto",          # "low" | "high" | "auto" (fps watchdog)
-)
-```
+canvas = vb.Canvas(title="Infrastruktura", dimensions=3, theme="cyber",
+                   highlight_neighbors=1, quality="auto")
 
-### Uzly a hrany
+# uzly a hrany (+ libovolná metadata; živé změny kdykoli za běhu)
+canvas.add_node("srv-1", type="server", name="Web 01", ip="10.0.0.5")
+canvas.add_edge("srv-1", "db-1")
+canvas.update_node("srv-1", status="down")     # popisek se přepočte
+with canvas.batch():                            # hromadné delty = jedna zpráva
+    ...
 
-```python
-# Uzel = id + libovolná metadata (kwargs)
-canvas.add_node("srv-1", name="Web 01", ip="10.0.0.5", os="Debian")
-canvas.add_edge("srv-1", "db-1", weight=2)   # hrany nesou metadata také
-
-# Živé změny kdykoli za běhu (režim "průběžně živý graf")
-canvas.update_node("srv-1", status="down")   # mění metadata; popisek se přepočítá
-canvas.remove_node("srv-9")                   # kaskádově odebere i hrany uzlu
-canvas.remove_edge("srv-1", "db-1")
-
-# Hromadné nahrání: delty odejdou jako jedna zpráva
-with canvas.batch():
-    for n in velky_dataset:
-        canvas.add_node(n.id, **n.meta)
-```
-
-### Popisek uzlu
-
-Popisek (text nad uzlem) se sestavuje **na serveru z metadat** podle šablony
-`{klíč}`. Buď ho deklaruješ jednou pro celý canvas, nebo per-uzel:
-
-```python
-canvas.node_label("{name} ({ip})")                    # celocanvasová šablona
-canvas.add_node("srv-1", name="Web", ip="10.0.0.5")   # → "Web (10.0.0.5)"
-
-canvas.add_node("x", label="{name}", name="X")        # per-uzel přebije šablonu
-```
-
-Priorita: per-uzel `label=` > `node_label` > id uzlu. Popisek se **automaticky
-přepočítá** při `update_node` — stačí poslat nové metadatum.
-
-### Typy uzlů a témata
-
-```python
-# Typ uzlu = vzhled (tvar / barva / velikost). Per-uzel meta color/size přebije.
+canvas.node_label("{name} ({ip})")              # šablona popisku z meta klíčů
 canvas.define_type("server", shape="box", color="#28d7fe", size=1.4)
-canvas.define_type("db", shape="octahedron", color="#ff2a6d", size=1.6)
-canvas.add_node("srv-1", type="server", name="Web 01")
 ```
 
-Tvary: `sphere` (výchozí), `box`, `octahedron`, `tetrahedron`. Vestavěná témata
-`modern` (světlé, čisté) a `cyber` (tmavé, neon + bloom). Vlastní téma se předá
-jako dict, který se sloučí přes vestavěný základ.
+- **Typy uzlů a témata** — `define_type` (tvary `sphere`/`box`/`octahedron`/
+  `tetrahedron`); vestavěná témata `modern`/`cyber` nebo vlastní dict.
+- **Eventy** (prohlížeč → Python) — `@canvas.on_click` / `on_hover` /
+  `on_background_click` / `on_view_change`; běží v thread-poolu.
+- **Akce** (Python → prohlížeč) — `focus`, `highlight`, `show_detail`,
+  `set_theme`, `set_edge_style("line"|"spline", elasticity=…)`.
+- **Detailní okno** — `detail_window(rows=…)`; klik na uzel otevře tažitelné
+  okno s metadaty (styl Amiga Workbench, dok, z-order).
+- **Toky** — `define_flow_type` + `flow(src, dst | path=[…], type=…)`: světelné
+  částice po hranách (pakety, zprávy, provoz); `count=None` je trvalý tok.
+- **Control okna** — `ControlWindow` + `open_window(win, on_submit=…)`:
+  backendem řízený parametrický dialog, jehož hodnoty tečou zpět na backend.
+
+Detaily API a chování viz návrhové dokumenty a příklady níže.
 
 ---
 
-## Interakce
+## Dokumentace
 
-### Eventy (prohlížeč → Python)
-
-```python
-@canvas.on_click
-def po_kliku(event):              # event.node_id, event.client_id
-    canvas.show_detail(event.node_id)
-    for soused in muj_zdroj(event.node_id):     # = interaktivní rozbalování
-        canvas.add_node(soused.id, **soused.meta)
-        canvas.add_edge(event.node_id, soused.id)
-
-@canvas.on_hover
-def po_najeti(event): ...          # event.node_id (None při odjetí)
-
-@canvas.on_background_click
-def do_prazdna(event): ...
-
-@canvas.on_view_change             # throttle 10 Hz
-def pohled(event): ...             # event.position, event.target, event.zoom
-```
-
-Handlery běží v thread-poolu; výjimka v handleru se zaloguje a server běží dál.
-
-### Akce (Python → prohlížeč)
-
-```python
-canvas.focus("srv-1")             # kamera plynule doletí k uzlu
-canvas.highlight("srv-1", depth=2)
-canvas.show_detail("srv-1")       # otevře detailní okno
-canvas.set_theme("cyber")         # přepne téma za běhu (včetně bloomu)
-```
-
-### Detailní okno (styl Amiga Workbench)
-
-Klik na uzel otevře tažitelné okno s metadaty uzlu. Okno lze minimalizovat
-(sedne do doku vlevo dole), obnovit a zavřít; klik na hodnotu ji zkopíruje do
-schránky. Více oken naráz, se z-orderem.
-
-```python
-canvas.detail_window(
-    rows=[("FQDN", "fqdn"), ("IP", "ip")],   # (popisek, meta_klíč); None = vše
-    width_chars=42,                           # šířka těla v monospace znacích
-    open_on_click=True,                       # klik na uzel otevře okno
-)
-```
-
-### Toky (vizualizace pohybu dat po hranách)
-
-Světelné body putující po hraně definovanou rychlostí — např. pakety, zprávy,
-provoz.
-
-```python
-canvas.define_flow_type("http", color="#28d7fe")
-canvas.define_flow_type("dns",  color="#ffd166", speed=1.5)
-
-canvas.flow("srv-1", "db-1", type="http", count=5, interval=0.2)   # jednorázové
-tok = canvas.flow("srv-1", "db-1", count=None, interval=0.5)       # trvalé
-canvas.stop_flow(tok)
-canvas.flow(path=["client", "fw-1", "srv-1", "db-1"], count=3)     # multi-hop
-```
-
-`count=N` je fire-and-forget; `count=None` vrací `flow_id` a tok běží dál
-(přežije reconnect klienta), dokud ho `stop_flow` nezastaví. Toky jezdí jen po
-existujících hranách (jinak `ValueError`).
-
-### Ovládání pohledu (v prohlížeči)
-
-| Vstup | Akce |
-|---|---|
-| Levé tlačítko + táhnout | orbit (3D) / posun (2D) |
-| Kolečko | zoom |
-| W / S / A / D | náklon a otáčení (3D) / posun (2D) |
-| Q / E | přiblížit / oddálit |
-| R nebo mezerník | reset pohledu |
-| Klik na uzel | zvýraznění sousedů + detailní okno |
-
----
-
-## Příklady
+**Spustitelné příklady** (`examples/`) — nejlepší živá reference:
 
 | Soubor | Co ukazuje |
 |---|---|
 | `examples/quickstart.py` | minimální živý graf (3D) |
 | `examples/quickstart2d.py` | 2D ortografický režim |
 | `examples/interactive.py` | klik → rozbalení sousedů (eventy/akce) |
-| `examples/showcase.py` | téma cyber, typy uzlů, živé barvy, toky |
-| `examples/words.py` | mapa slov z Wikipedie (crawl odkazů do hloubky) |
-| `examples/stress.py` | zátěžový test (tisíce uzlů, preferential attachment) |
-| `examples/wireshark/` | **síťové toky**: přehrání pcap i živý odposlech |
+| `examples/showcase.py` | téma cyber, typy uzlů, živé barvy, toky, **control okno** (čáry/splajny) |
+| `examples/words.py` | mapa slov z Wikipedie (crawl odkazů) |
+| `examples/stress.py` | zátěžový test (tisíce uzlů) |
+| [`examples/wireshark/`](examples/wireshark/README.md) | **síťové toky**: přehrání pcap, živý odposlech a cesta paketu (traceroute) |
 
-Wireshark příklad (uzly = IP/FQDN, hrany = komunikační páry, toky = pakety
-podle protokolu) má vlastní [how-to](examples/wireshark/README.md). Živý
-odposlech vyžaduje root:
+**Návrhové dokumenty** (`docs/superpowers/specs/`) — architektura a rozhodnutí:
 
-```bash
-python examples/wireshark/make_sample_pcap.py sample.pcap   # vzorek
-python examples/wireshark/pcap_replay.py sample.pcap --speed 4
-sudo python examples/wireshark/live_capture.py --iface en0  # živě (jen IPv4)
-```
+- [Návrh knihovny (architektura, protokol, fyzika, rendering)](docs/superpowers/specs/2026-06-10-viewbase-library-design.md)
+- [Detailní okno](docs/superpowers/specs/2026-06-14-detail-window-design.md)
+- [Traceroute toky (routery jako uzly, multi-hop)](docs/superpowers/specs/2026-06-16-traceroute-toky-design.md)
+- [Control okna (parametrické GUI) + křivkové hrany](docs/superpowers/specs/2026-06-17-control-okna-design.md)
+
+Implementační plány (krok za krokem) jsou v
+[`docs/superpowers/plans/`](docs/superpowers/plans/).
 
 ---
 
@@ -236,24 +153,21 @@ sudo python examples/wireshark/live_capture.py --iface en0  # živě (jen IPv4)
 Python skript (Canvas API)
         │  data + metadata + vzhled + chování
 viewbase (pip balíček: GraphModel, FastAPI + WebSocket, zabalený frontend)
-        │  ↓ delty + akce          ↑ eventy (klik, hover, kamera)
+        │  ↓ delty + akce          ↑ eventy (klik, hover, kamera, control okna)
 Browser (viewbase.js)
         ├─ GraphStore  – jediné zrcadlo stavu
         ├─ PhysicsWorker – d3-force-3d (Barnes-Hut, 2D/3D)
         └─ Renderer – Three.js instancing, témata, SDF labely, toky, okna
 ```
 
-Detailní návrhové dokumenty jsou v `docs/superpowers/specs/` (architektura,
-interakce, estetika, toky, detailní okno) a implementační plány v
-`docs/superpowers/plans/`.
-
 ### Struktura repozitáře
 
 ```
-python/viewbase/      pip balíček (canvas, server, protocol, zabalený static/)
-frontend/             zdrojáky JS (Vite) – vyvíjí se s npm, build → static/
+python/viewbase/      pip balíček (canvas, controls, server, protocol, static/)
+frontend/             zdrojáky JS (Vite) – build → static/
 examples/             spustitelné ukázky = živá dokumentace
 docs/superpowers/     návrhové specifikace a plány
+docs/images/          screenshoty pro README
 legacy/               původní prototyp (referenční)
 ```
 
@@ -275,7 +189,8 @@ koncový uživatel npm nepotřebuje.
 
 ## Stav
 
-Funkční jádro v1: živý 2D/3D graf, typy uzlů, témata (modern/cyber), SDF
-popisky, bloom, quality=auto, eventy/akce, zvýraznění sousedů, detailní okno,
-toky a typy toků, wireshark příklady. Plánováno dále: GLB modely uzlů,
-distribuce přes wheel + CI, IPv6 v živém odposlechu.
+Funkční jádro: živý 2D/3D graf, typy uzlů, témata (modern/cyber), SDF popisky,
+bloom, quality=auto, eventy/akce, zvýraznění sousedů, detailní okno, toky a typy
+toků, wireshark příklady (pcap, živý odposlech, traceroute), **control okna
+(parametrické GUI) a křivkové hrany (čáry/splajny + elasticita)**. Plánováno
+dále: GLB modely uzlů, distribuce přes wheel + CI, IPv6 v živém odposlechu.
