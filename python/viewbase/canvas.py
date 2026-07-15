@@ -66,6 +66,7 @@ class Canvas:
         self._flows: dict[str, dict[str, Any]] = {}   # flow_id -> trvalý tok (do init)
         self._windows: dict[str, ControlWindow] = {}
         self._window_callbacks: dict[str, Any] = {}
+        self._window_live: dict[str, bool] = {}   # window_id -> live režim
         self._seq = 0
         self._batch_depth = 0
         self._pending = self._empty_pending()
@@ -220,18 +221,22 @@ class Canvas:
 
     # ---- control okna -------------------------------------------------
 
-    def open_window(self, window: ControlWindow, *, on_submit=None) -> str:
+    def open_window(self, window: ControlWindow, *, on_submit=None,
+                    live: bool = False) -> str:
         """Otevři/nahraď parametrické okno: ulož do stavu (pro init replay) a
         zařaď akci open_window. on_submit dostane event s validovanými values.
+        `live=True` posílá hodnoty při každé změně (bez tlačítka Použít).
         Pozor: při nahrazení okna stejného window_id bez on_submit se předchozí
         callback zruší – chceš-li ho zachovat, předej on_submit znovu."""
         with self._lock:
             self._windows[window.window_id] = window
+            self._window_live[window.window_id] = bool(live)
             if on_submit is not None:
                 self._window_callbacks[window.window_id] = on_submit
             else:
                 self._window_callbacks.pop(window.window_id, None)
-            self._actions.append({**window.spec(), "action": "open_window"})
+            self._actions.append(
+                {**window.spec(), "action": "open_window", "live": bool(live)})
         return window.window_id
 
     def close_window(self, window_id: str) -> None:
@@ -240,6 +245,7 @@ class Canvas:
             if self._windows.pop(window_id, None) is None:
                 raise ValueError(f"Okno '{window_id}' neexistuje")
             self._window_callbacks.pop(window_id, None)
+            self._window_live.pop(window_id, None)
             self._actions.append(
                 {"action": "close_window", "window_id": window_id})
 
@@ -542,7 +548,9 @@ class Canvas:
                 "edges": [self._public_edge(e) for e in self._edges.values()],
                 "flow_types": {n: dict(s) for n, s in self._flow_types.items()},
                 "flows": [dict(f) for f in self._flows.values()],
-                "windows": [w.spec() for w in self._windows.values()],
+                "windows": [
+                    {**w.spec(), "live": self._window_live.get(wid, False)}
+                    for wid, w in self._windows.items()],
             }
 
     # ---- delty ---------------------------------------------------------

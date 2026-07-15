@@ -172,6 +172,7 @@ export class WindowManager {
       id: spec.window_id,
       title: spec.title,
       fields: spec.fields,
+      live: spec.live,
       widthChars: CONTROL_WIDTH_CHARS,
       onSubmit,
       container: this.container,

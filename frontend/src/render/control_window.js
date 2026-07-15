@@ -1,7 +1,12 @@
-/** Control okno: formulářové tělo (int slider+číslo, string text, enum select)
- *  + tlačítko Použít, které pošle všechny hodnoty zpět. Chrome dědí z
- *  BaseWindow. Čisté helpery clampValue/readValues zrcadlí backend validaci. */
+/** Control okno: formulářové tělo (int/number slider+číslo, string text,
+ *  enum select, bool checkbox) + tlačítko Použít, které pošle všechny hodnoty
+ *  zpět; live režim posílá při každé změně (throttle) a tlačítko nemá.
+ *  Chrome dědí z BaseWindow. Čisté helpery clampValue/readValues zrcadlí
+ *  backend validaci. */
+import { throttle } from '../interact/throttle.js';
 import { BaseWindow } from './base_window.js';
+
+const LIVE_THROTTLE_MS = 150;   // live submit při tažení slideru
 
 /** Zvaliduj jednu hodnotu podle field descriptoru (zrcadlo backendu).
  *  Při nepoužitelné hodnotě ponech field.value. */
@@ -10,6 +15,14 @@ export function clampValue(field, raw) {
     const n = Math.round(Number(raw));
     if (!Number.isFinite(n)) return field.value;
     return Math.max(field.min, Math.min(field.max, n));
+  }
+  if (field.type === 'number') {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return field.value;
+    return Math.max(field.min, Math.min(field.max, n));
+  }
+  if (field.type === 'bool') {
+    return typeof raw === 'boolean' ? raw : field.value;
   }
   if (field.type === 'string') {
     return String(raw ?? '').slice(0, field.maxlength);
@@ -30,10 +43,13 @@ export function readValues(fields, rawMap) {
 }
 
 export class ControlWindow extends BaseWindow {
-  constructor({ id, title, fields, widthChars, onSubmit, container, manager }) {
+  constructor({
+    id, title, fields, widthChars, onSubmit, container, manager, live = false,
+  }) {
     super({ id, title, widthChars, container, manager, kind: 'control' });
     this.fields = fields;
     this.onSubmit = onSubmit;
+    this.live = Boolean(live);
     this.inputs = new Map();        // key -> () => rawValue
     this._buildBody();
     this._mount();
@@ -64,19 +80,27 @@ export class ControlWindow extends BaseWindow {
     }
     body.appendChild(table);
 
-    const apply = document.createElement('button');
-    apply.dataset.role = 'control-apply';
-    apply.textContent = 'Použít';
-    apply.style.cssText = [
-      'margin-top:8px', 'padding:3px 12px', 'cursor:pointer',
-      'border:1px solid var(--vb-window-gadget, #8a93a3)', 'border-radius:4px',
-      'background:transparent', 'color:inherit',
-    ].join(';');
-    apply.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._submit();
-    });
-    body.appendChild(apply);
+    if (this.live) {
+      // live: každá změna widgetu odešle hodnoty (throttle kvůli sliderům);
+      // 'input' kryje text/range/number, 'change' select/checkbox.
+      const send = throttle(() => this._submit(), LIVE_THROTTLE_MS);
+      body.addEventListener('input', send);
+      body.addEventListener('change', send);
+    } else {
+      const apply = document.createElement('button');
+      apply.dataset.role = 'control-apply';
+      apply.textContent = 'Použít';
+      apply.style.cssText = [
+        'margin-top:8px', 'padding:3px 12px', 'cursor:pointer',
+        'border:1px solid var(--vb-window-gadget, #8a93a3)',
+        'border-radius:4px', 'background:transparent', 'color:inherit',
+      ].join(';');
+      apply.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._submit();
+      });
+      body.appendChild(apply);
+    }
     this.el.appendChild(body);
   }
 
@@ -96,20 +120,30 @@ export class ControlWindow extends BaseWindow {
       return () => field.options.find(
         (opt) => String(opt.value) === sel.value)?.value ?? field.value;
     }
-    if (field.type === 'int') {
+    if (field.type === 'int' || field.type === 'number') {
+      const step = field.step ?? (field.type === 'int' ? 1 : 'any');
       const range = document.createElement('input');
       range.type = 'range';
       range.min = field.min; range.max = field.max;
-      range.step = field.step ?? 1; range.value = field.value;
+      range.step = step === 'any'
+        ? (field.max - field.min) / 100 || 'any' : step;
+      range.value = field.value;
       const num = document.createElement('input');
       num.type = 'number';
       num.min = field.min; num.max = field.max;
-      num.step = field.step ?? 1; num.value = field.value;
+      num.step = step; num.value = field.value;
       num.style.cssText = 'width:5em;margin-left:6px';
       range.addEventListener('input', () => { num.value = range.value; });
       num.addEventListener('input', () => { range.value = num.value; });
       cell.append(range, num);
       return () => num.value;
+    }
+    if (field.type === 'bool') {
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = Boolean(field.value);
+      cell.appendChild(box);
+      return () => box.checked;
     }
     // string
     const text = document.createElement('input');

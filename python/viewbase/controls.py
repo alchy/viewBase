@@ -6,6 +6,7 @@ eventem window_submit. validate_values je čistá – clampuje příchozí hodno
 podle field descriptorů (bezpečnost: klient může poslat cokoli)."""
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -37,6 +38,30 @@ class ControlWindow:
             "key": key, "label": label, "type": "int",
             "value": int(value), "min": int(min), "max": int(max),
             "step": int(step),
+        })
+        return self
+
+    def number(self, key: str, label: str, *, min: float, max: float,
+               value: float, step: float | None = None) -> "ControlWindow":
+        """Float pole renderované jako slider (např. elasticita 0.0–1.0)."""
+        if min > max:
+            raise ValueError("number: min nesmí být větší než max")
+        field: dict[str, Any] = {
+            "key": key, "label": label, "type": "number",
+            "value": float(value), "min": float(min), "max": float(max),
+        }
+        if step is not None:
+            field["step"] = float(step)
+        self._fields.append(field)
+        return self
+
+    def boolean(self, key: str, label: str, *,
+                value: bool = False) -> "ControlWindow":
+        """Bool pole renderované jako checkbox."""
+        if not isinstance(value, bool):
+            raise ValueError("boolean: value musí být bool")
+        self._fields.append({
+            "key": key, "label": label, "type": "bool", "value": value,
         })
         return self
 
@@ -98,6 +123,16 @@ def _clamp_field(field: dict, raw: Any) -> Any:
         except (TypeError, ValueError):
             return _DROP
         return max(field["min"], min(field["max"], value))
+    if kind == "number":
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return _DROP
+        if not math.isfinite(value):
+            return _DROP
+        return max(field["min"], min(field["max"], value))
+    if kind == "bool":
+        return raw if isinstance(raw, bool) else _DROP
     if kind == "string":
         if not isinstance(raw, str):
             return _DROP

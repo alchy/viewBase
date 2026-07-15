@@ -43,8 +43,23 @@ describe('clampValue', () => {
     expect(clampValue(strField, undefined)).toBe('');
   });
 
-  it('neznámý typ pole → stávající value', () => {
+  it('number clamp na float rozsah, nečíselný → stávající value', () => {
+    const f = { key: 'f', type: 'number', value: 0.3, min: 0, max: 1 };
+    expect(clampValue(f, '0.7')).toBeCloseTo(0.7, 10);
+    expect(clampValue(f, 5)).toBe(1);
+    expect(clampValue(f, -1)).toBe(0);
+    expect(clampValue(f, 'x')).toBe(0.3);
+  });
+
+  it('bool přijme jen boolean, jinak stávající value', () => {
+    const f = { key: 'b', type: 'bool', value: false };
+    expect(clampValue(f, true)).toBe(true);
+    expect(clampValue(f, 'x')).toBe(false);
     expect(clampValue({ type: 'bool', value: true }, 'x')).toBe(true);
+  });
+
+  it('neznámý typ pole → stávající value', () => {
+    expect(clampValue({ type: 'ghost', value: true }, 'x')).toBe(true);
   });
 });
 
