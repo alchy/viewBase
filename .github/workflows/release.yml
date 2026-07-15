@@ -1,0 +1,70 @@
+# Release pipeline: testy → build frontendu → wheel/sdist → PyPI.
+# Publikaci spouští push tagu v* (např. v0.1.0). Vyžaduje secret
+# PYPI_API_TOKEN (PyPI → Account settings → API tokens, scope viewbase).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+        working-directory: frontend
+      - run: npx vitest run
+        working-directory: frontend
+      - run: pip install -e "python[dev]"
+      - run: python -m pytest -q
+        working-directory: python
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build          # → python/viewbase/static
+        working-directory: frontend
+      - run: pip install build
+      - run: python -m build
+        working-directory: python
+      - name: Wheel musí obsahovat frontend
+        run: unzip -l python/dist/*.whl | grep -q "viewbase/static/index.html"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: python/dist/
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}

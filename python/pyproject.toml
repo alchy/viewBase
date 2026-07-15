@@ -6,11 +6,16 @@ build-backend = "hatchling.build"
 name = "viewbase"
 version = "0.1.0"
 description = "Živá 2D/3D force-graph vizualizace ovládaná z Pythonu"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
+
+[project.urls]
+Homepage = "https://github.com/alchy/viewBase"
+Repository = "https://github.com/alchy/viewBase"
 
 [project.optional-dependencies]
 dev = [
@@ -18,8 +23,14 @@ dev = [
     "httpx>=0.27",
 ]
 
+# static/ je gitignorované (build artefakt z frontend/), hatchling by ho
+# proto z balíčku vynechal – artifacts ho vynutí do wheelu i sdist.
 [tool.hatch.build.targets.wheel]
 packages = ["viewbase"]
+artifacts = ["viewbase/static/**"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["viewbase/static/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
