@@ -22,7 +22,7 @@ def test_serve_zavre_canvas_po_keyboard_interrupt(monkeypatch):
     def fake_run(*args, **kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(uvicorn, "run", fake_run)
+    monkeypatch.setattr(uvicorn.Server, "run", fake_run)
     with pytest.raises(KeyboardInterrupt):
         server.serve(canvas)
     assert canvas._closed is True        # close() proběhl ve finally

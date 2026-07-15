@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 import uuid
 import webbrowser
 from contextlib import asynccontextmanager
@@ -128,20 +129,76 @@ def create_app(canvas: Canvas) -> FastAPI:
     return app
 
 
+class ServerHandle:
+    """Server běžící na pozadí (serve(block=False)) – pro REPL a Jupyter.
+    Kontext manager: `with vb.serve(c, block=False) as s:` ho po bloku
+    zastaví."""
+
+    def __init__(self, server: uvicorn.Server, thread: threading.Thread,
+                 canvas: Canvas):
+        self._server = server
+        self._thread = thread
+        self._canvas = canvas
+
+    @property
+    def port(self) -> int:
+        """Skutečný port (i pro port=0, kde OS přidělí efemérní)."""
+        return self._server.servers[0].sockets[0].getsockname()[1]
+
+    def stop(self, timeout: float = 5.0) -> None:
+        """Zastav server (graceful), počkej na doběh vlákna, zavři canvas."""
+        self._server.should_exit = True
+        self._thread.join(timeout)
+        self._canvas.close()
+
+    def __enter__(self) -> "ServerHandle":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+
+
+def _make_server(canvas: Canvas, host: str, port: int) -> uvicorn.Server:
+    # ws_ping_interval=None vypíná serverový keepalive ping knihovny
+    # websockets: jeho samostatná úloha jinak souběžně "draina" stejné
+    # spojení jako náš broadcast a při velkém provozu spadne na interním
+    # assertu. Mrtvá spojení odhalí selhání dalšího patche (klient se
+    # reconnectne), keepalive proto nepotřebujeme.
+    config = uvicorn.Config(create_app(canvas), host=host, port=port,
+                            log_level="warning",
+                            ws_ping_interval=None, ws_ping_timeout=None)
+    return uvicorn.Server(config)
+
+
 def serve(canvas: Canvas, *, host: str = "127.0.0.1", port: int = 8080,
-          open_browser: bool = False) -> None:
-    """Spustí server a blokuje. Mutace canvasu dělej z jiných vláken."""
-    app = create_app(canvas)
+          open_browser: bool = False, block: bool = True) -> ServerHandle | None:
+    """Spustí server. `block=True` (default) blokuje do Ctrl-C; mutace
+    canvasu pak dělej z every() úloh nebo event handlerů. `block=False`
+    server spustí v daemon vlákně a vrátí ServerHandle (REPL/Jupyter):
+    prompt zůstane volný, `handle.stop()` server ukončí."""
+    server = _make_server(canvas, host, port)
     if open_browser:
         threading.Timer(
             0.7, webbrowser.open, args=(f"http://{host}:{port}/",)).start()
-    try:
-        # ws_ping_interval=None vypíná serverový keepalive ping knihovny
-        # websockets: jeho samostatná úloha jinak souběžně "draina" stejné
-        # spojení jako náš broadcast a při velkém provozu spadne na interním
-        # assertu. Mrtvá spojení odhalí selhání dalšího patche (klient se
-        # reconnectne), keepalive proto nepotřebujeme.
-        uvicorn.run(app, host=host, port=port, log_level="warning",
-                    ws_ping_interval=None, ws_ping_timeout=None)
-    finally:
-        canvas.close()   # i po KeyboardInterrupt – nenechat viset worker vlákna
+    if block:
+        try:
+            server.run()
+        finally:
+            canvas.close()   # i po KeyboardInterrupt – nenechat viset vlákna
+        return None
+    thread = threading.Thread(target=server.run, name="viewbase-server",
+                              daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 5.0
+    while not server.started:          # čekej na bind (nebo pád)
+        if not thread.is_alive():
+            canvas.close()
+            raise RuntimeError(
+                "viewbase server se nepodařilo spustit – viz log výše"
+                f" (host={host}, port={port})")
+        if time.monotonic() > deadline:
+            server.should_exit = True
+            canvas.close()
+            raise TimeoutError("viewbase server nenastartoval do 5 s")
+        time.sleep(0.01)
+    return ServerHandle(server, thread, canvas)

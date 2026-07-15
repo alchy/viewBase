@@ -2,7 +2,8 @@
 from . import protocol
 from .canvas import Canvas
 from .controls import ControlWindow
-from .server import create_app, serve
+from .server import ServerHandle, create_app, serve
 
-__all__ = ["Canvas", "ControlWindow", "create_app", "serve", "protocol"]
+__all__ = ["Canvas", "ControlWindow", "ServerHandle", "create_app", "serve",
+           "protocol"]
 __version__ = "0.1.0"
