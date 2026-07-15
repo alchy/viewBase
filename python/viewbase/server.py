@@ -63,7 +63,9 @@ def create_app(canvas: Canvas) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         task = asyncio.create_task(_broadcast_loop(canvas, clients, state_lock))
+        stop_tasks = canvas.start_periodic_tasks()   # every() úlohy
         yield
+        stop_tasks.set()
         task.cancel()
 
     app = FastAPI(lifespan=lifespan)

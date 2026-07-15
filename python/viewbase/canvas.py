@@ -75,6 +75,8 @@ class Canvas:
         self._actions: list[dict[str, Any]] = []
         self._closed = False
         self._node_label_template: str | None = None
+        self._tasks: list[dict[str, Any]] = []      # every() úlohy
+        self._tasks_stop: threading.Event | None = None   # None = neběží
         self._register("window_submit", self._on_window_submit)
 
     @staticmethod
@@ -514,6 +516,55 @@ class Canvas:
             self._seq += 1
             return self._seq, deltas
 
+    # ---- periodické úlohy ----------------------------------------------
+
+    def every(self, seconds: float, *,
+              name: str | None = None) -> Callable[[Callable], Callable]:
+        """Dekorátor: registruj periodickou úlohu – knihovna ji po startu
+        serveru spouští v daemon vlákně, žádný threading v uživatelském
+        kódu. První tik po uplynutí intervalu. Výjimka se zaloguje a smyčka
+        běží dál. Registruj před vb.serve(); pozdější registrace se jen
+        zaloguje a ignoruje."""
+        interval = float(seconds)
+        if interval <= 0:
+            raise ValueError("every: interval musí být kladný počet sekund")
+
+        def register(func: Callable[[], None]) -> Callable[[], None]:
+            task_name = name or getattr(func, "__name__", "úloha")
+            with self._lock:
+                if self._tasks_stop is not None:
+                    logger.warning(
+                        "every(): úloha '%s' registrována po startu serveru"
+                        " – ignoruje se", task_name)
+                    return func
+                self._tasks.append(
+                    {"interval": interval, "name": task_name, "func": func})
+            return func
+        return register
+
+    def start_periodic_tasks(self) -> threading.Event:
+        """Spusť every() úlohy (volá server v lifespanu). Vrátí stop event;
+        idempotentní – opakované volání vrátí týž event."""
+        with self._lock:
+            if self._tasks_stop is not None:
+                return self._tasks_stop
+            stop = threading.Event()
+            self._tasks_stop = stop
+            tasks = list(self._tasks)
+        for task in tasks:
+            threading.Thread(
+                target=self._run_periodic, args=(task, stop),
+                name=f"viewbase-every-{task['name']}", daemon=True).start()
+        return stop
+
+    @staticmethod
+    def _run_periodic(task: dict[str, Any], stop: threading.Event) -> None:
+        while not stop.wait(task["interval"]):
+            try:
+                task["func"]()
+            except Exception:
+                logger.exception("Výjimka v every() úloze '%s'", task["name"])
+
     # ---- eventy ----------------------------------------------------------
 
     def on_click(self, func: Callable[[Any], None]) -> Callable[[Any], None]:
@@ -558,13 +609,15 @@ class Canvas:
             logger.exception("Výjimka v handleru eventu '%s'", name)
 
     def close(self) -> None:
-        """Ukonči thread-pool handlerů. Idempotentní; další dispatch_event
-        je no-op. Nečeká na běžící handlery (wait=False) a zruší zařazené
-        čekající úlohy (cancel_futures=True)."""
+        """Ukonči thread-pool handlerů i every() úlohy. Idempotentní; další
+        dispatch_event je no-op. Nečeká na běžící handlery (wait=False)
+        a zruší zařazené čekající úlohy (cancel_futures=True)."""
         with self._lock:
             if self._closed:
                 return
             self._closed = True
+            if self._tasks_stop is not None:
+                self._tasks_stop.set()
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     # ---- akce server -> klient -------------------------------------------
