@@ -286,6 +286,35 @@ class Canvas:
             self._nodes[node_id] = node
             self._pending["add_nodes"][node_id] = self._public_node(node)
 
+    def ensure_node(self, node_id: str, *, type: str | None = None,
+                    label: str | None = None, **meta: Any) -> None:
+        """Idempotentní add_node: neexistující uzel založí, existujícímu
+        sloučí meta (patch odejde jen při reálné změně). type/label
+        existujícího uzlu měnit neumí (viz update_node / Plán 2b) –
+        odlišná hodnota je chyba, shodná nebo nezadaná je no-op."""
+        with self._lock:
+            node = self._nodes.get(node_id)
+            if node is None:
+                self.add_node(node_id, type=type, label=label, **meta)
+                return
+            if type is not None and type != node["type"]:
+                raise ValueError(
+                    f"ensure_node: uzel '{node_id}' má typ {node['type']!r},"
+                    f" změna na {type!r} přijde až v Plánu 2b")
+            if label is not None and label != node["label_template"]:
+                raise ValueError(
+                    f"ensure_node: uzel '{node_id}' má jinou label šablonu –"
+                    " změna přijde až v Plánu 2b")
+            merged = {**node["meta"], **meta}
+            if merged == node["meta"]:
+                return
+            node["meta"] = merged
+            payload = self._public_node(node)
+            if node_id in self._pending["add_nodes"]:
+                self._pending["add_nodes"][node_id] = payload
+            else:
+                self._pending["update_nodes"][node_id] = payload
+
     def update_node(self, node_id: str, **meta: Any) -> None:
         with self._lock:
             if node_id not in self._nodes:
@@ -331,6 +360,22 @@ class Canvas:
             self._edges[key] = edge
             self._pending["add_edges"][key] = self._public_edge(edge)
 
+    def ensure_edge(self, source: str, target: str, **meta: Any) -> None:
+        """Idempotentní add_edge: neexistující hranu založí, existující
+        sloučí meta (patch jen při reálné změně; klient add_edges
+        upsertuje)."""
+        with self._lock:
+            edge = self._edges.get(_edge_key(source, target))
+            if edge is None:
+                self.add_edge(source, target, **meta)
+                return
+            merged = {**edge["meta"], **meta}
+            if merged == edge["meta"]:
+                return
+            edge["meta"] = merged
+            key = _edge_key(source, target)
+            self._pending["add_edges"][key] = self._public_edge(edge)
+
     def remove_edge(self, source: str, target: str) -> None:
         with self._lock:
             key = _edge_key(source, target)
@@ -355,6 +400,42 @@ class Canvas:
         for fid in doomed:
             del self._flows[fid]
             self._actions.append({"action": "stop_flow", "flow_id": fid})
+
+    # ---- čtení ---------------------------------------------------------
+
+    def has_node(self, node_id: str) -> bool:
+        with self._lock:
+            return node_id in self._nodes
+
+    def has_edge(self, source: str, target: str) -> bool:
+        with self._lock:
+            return _edge_key(source, target) in self._edges
+
+    def node(self, node_id: str) -> dict[str, Any] | None:
+        """Veřejná kopie uzlu {'id','type','label','meta'} s vyrenderovaným
+        popiskem; None když neexistuje. Mutace návratu stav neovlivní."""
+        with self._lock:
+            node = self._nodes.get(node_id)
+            return self._public_node(node) if node else None
+
+    def edge(self, source: str, target: str) -> dict[str, Any] | None:
+        """Veřejná kopie hrany {'source','target','meta'} (neorientovaně);
+        None když neexistuje."""
+        with self._lock:
+            edge = self._edges.get(_edge_key(source, target))
+            return self._public_edge(edge) if edge else None
+
+    @property
+    def nodes(self) -> list[dict[str, Any]]:
+        """Kopie všech uzlů (jako v snapshot); pořadí = pořadí přidání."""
+        with self._lock:
+            return [self._public_node(n) for n in self._nodes.values()]
+
+    @property
+    def edges(self) -> list[dict[str, Any]]:
+        """Kopie všech hran (jako v snapshot); pořadí = pořadí přidání."""
+        with self._lock:
+            return [self._public_edge(e) for e in self._edges.values()]
 
     # ---- labely --------------------------------------------------------
 
