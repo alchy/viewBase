@@ -1,7 +1,5 @@
 """Quickstart: živý graf, do kterého každé 2 s přibude uzel."""
 import random
-import threading
-import time
 
 import viewbase as vb
 
@@ -14,15 +12,12 @@ with canvas.batch():
         canvas.add_edge(f"n{i}", f"n{random.randrange(i)}")
 
 
+@canvas.every(2.0)
 def zivy_graf() -> None:
-    i = 30
-    while True:
-        time.sleep(2.0)
-        with canvas.batch():
-            canvas.add_node(f"n{i}", value=i)
-            canvas.add_edge(f"n{i}", f"n{random.randrange(i)}")
-        i += 1
+    i = len(canvas.nodes)
+    with canvas.batch():
+        canvas.add_node(f"n{i}", value=i)
+        canvas.add_edge(f"n{i}", f"n{random.randrange(i)}")
 
 
-threading.Thread(target=zivy_graf, daemon=True).start()
 vb.serve(canvas, port=8080, open_browser=True)

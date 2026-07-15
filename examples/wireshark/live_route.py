@@ -114,6 +114,8 @@ class Route:
 
 class RouteTable:
     """Cache cest k cílům a jejich materializace do canvasu. Thread-safe.
+    Uzly a hrany se dedupují proti canvasu samotnému (has_node/ensure_edge),
+    žádný stínový stav.
 
     `tracer(remote)` vrací výstup ve tvaru trace() (seznam (ttl, ip|None));
     injektovatelný kvůli testům. `pool` musí mít metodu submit(fn, *args);
@@ -127,8 +129,6 @@ class RouteTable:
             max_workers=workers, thread_name_prefix="traceroute")
         self._lock = threading.RLock()
         self._routes = {}        # remote -> Route
-        self._nodes = set()      # ID uzlů, které jsme přidali
-        self._edges = set()      # kanonické klíče hran, které jsme přidali
         self._hops = set()       # známé router IP (anti-rekurze na vlastní proby)
 
     # -- veřejné API --
@@ -203,9 +203,10 @@ class RouteTable:
         return "unknown" if _is_placeholder(node_id) else "router"
 
     def _ensure_node(self, node_id: str, *, role: str) -> None:
-        if node_id in self._nodes:
+        # canvas je zdroj pravdy (žádný stínový set); první role vítězí –
+        # uzel viděný jako host zůstane hostem, i když se objeví jako hop
+        if self._canvas.has_node(node_id):
             return
-        self._nodes.add(node_id)
         if role == "unknown":
             self._canvas.add_node(node_id, type="unknown", label="*",
                                   role="hop", ip="", fqdn="")
@@ -214,18 +215,11 @@ class RouteTable:
                                   ip=node_id, fqdn="")
 
     def _ensure_edge(self, a: str, b: str) -> None:
-        if a == b:
-            return
-        key = (a, b) if a <= b else (b, a)
-        if key in self._edges:
-            return
-        self._edges.add(key)
-        self._canvas.add_edge(a, b)
+        if a != b:
+            self._canvas.ensure_edge(a, b)
 
     def _remove_edge(self, a: str, b: str) -> None:
-        key = (a, b) if a <= b else (b, a)
-        if key in self._edges:
-            self._edges.discard(key)
+        if self._canvas.has_edge(a, b):
             self._canvas.remove_edge(a, b)
 
 

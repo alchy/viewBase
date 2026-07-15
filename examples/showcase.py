@@ -1,10 +1,10 @@
 """Showcase estetiky a toků: téma cyber, typy uzlů s tvary a barvami,
 živé update_node color, highlight_neighbors=2, typy toků a:
  - trvalý tok na pozadí (klient → server),
- - fire-and-forget tok při kliku na uzel (uzel → DB)."""
+ - fire-and-forget tok při kliku na uzel (uzel → DB, cíl z meta uzlu),
+ - live control okno (hrany čára/splajn + elasticita bez tlačítka Použít).
+Žádný threading – periodický provoz řeší @canvas.every()."""
 import random
-import threading
-import time
 
 import viewbase as vb
 
@@ -23,7 +23,8 @@ with canvas.batch():
     canvas.add_node("db-0", type="db", label="{name}", name="Hlavní DB")
     for i in range(12):
         canvas.add_node(f"cl-{i}", type="client", label="{name}",
-                        name=f"Klient {i}", status="idle")
+                        name=f"Klient {i}", status="idle",
+                        server=f"srv-{i % 3}")
         canvas.add_edge(f"cl-{i}", f"srv-{i % 3}")
     for i in range(3):
         canvas.add_edge(f"srv-{i}", "db-0")
@@ -35,38 +36,42 @@ for i in range(3):
 
 @canvas.on_click
 def on_click(event):
-    """Klik na klienta → tok dotazu přes jeho server do DB (multi-hop)."""
-    node_id = event.node_id
-    if node_id.startswith("cl-"):
-        idx = int(node_id.split("-")[1])
-        canvas.flow(path=[node_id, f"srv-{idx % 3}", "db-0"],
+    """Klik na klienta → tok dotazu přes jeho server do DB (multi-hop).
+    Cíl se čte z metadat uzlu (čtecí API), žádné parsování id."""
+    node = canvas.node(event.node_id)
+    if node and node["type"] == "client":
+        canvas.flow(path=[node["id"], node["meta"]["server"], "db-0"],
                     type="query", count=4, interval=0.15)
 
 
-def provoz():
-    """Náhodný klient se rozsvítí dožluta a zase zhasne – živá data."""
-    while True:
-        time.sleep(2.0)
-        cl = f"cl-{random.randrange(12)}"
-        canvas.update_node(cl, color="#ffd166", status="busy")
-        time.sleep(1.0)
-        canvas.update_node(cl, color="#05ffa1", status="idle")
+_busy: list[str] = []
 
 
-# control okno: přepínání stylu hran (čára/splajn) + elasticita
+@canvas.every(1.5)
+def provoz() -> None:
+    """Náhodný klient se rozsvítí dožluta, další tik ho zhasne – živá data."""
+    while _busy:
+        canvas.update_node(_busy.pop(), color="#05ffa1", status="idle")
+    cl = f"cl-{random.randrange(12)}"
+    canvas.update_node(cl, color="#ffd166", status="busy")
+    _busy.append(cl)
+
+
+# control okno: styl hran (čára/splajn) + elasticita; live = změny se
+# aplikují rovnou při tažení slideru, bez tlačítka Použít
 _render_win = vb.ControlWindow("render", title="Vykreslování")
 _render_win.enum("style", "Hrany",
                  options=[("line", "Čáry"), ("spline", "Splajny")],
                  value="line")
-_render_win.integer("elasticity", "Elasticita", min=0, max=100, value=30)
+_render_win.number("elasticity", "Elasticita", min=0.0, max=1.0,
+                   value=0.3, step=0.05)
 
 
 def _apply_render(event):
     canvas.set_edge_style(event.values["style"],
-                          elasticity=event.values["elasticity"] / 100)
+                          elasticity=event.values["elasticity"])
 
 
-canvas.open_window(_render_win, on_submit=_apply_render)
+canvas.open_window(_render_win, on_submit=_apply_render, live=True)
 
-threading.Thread(target=provoz, daemon=True).start()
 vb.serve(canvas, port=8080, open_browser=True)

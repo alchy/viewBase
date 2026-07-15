@@ -45,17 +45,27 @@ Naměřeno (Apple M4 Pro, headless Chromium): **3 000 uzlů ~120 fps**,
 ## Instalace a spuštění
 
 ```bash
+pip install viewbase
+python examples/quickstart.py     # otevře http://127.0.0.1:8080
+```
+
+Balíček nese už sestavený frontend — **Node.js není potřeba**. Publikaci na
+PyPI dělá release pipeline při tagu `v*` (do prvního release nainstaluj
+z repa podle sekce níže). **Požadavky:** Python ≥ 3.10.
+
+<details>
+<summary>Vývoj knihovny z repa (vyžaduje Node.js ≥ 20)</summary>
+
+```bash
 git clone <repo> && cd viewBase
 python -m venv .venv && source .venv/bin/activate
 pip install -e "python[dev]"
 
 # jednorázové sestavení frontendu do python/viewbase/static
 (cd frontend && npm install && npm run build)
-
-python examples/quickstart.py     # otevře http://127.0.0.1:8080
 ```
 
-**Požadavky:** Python ≥ 3.10, Node.js ≥ 20 (jen pro build frontendu).
+</details>
 
 ---
 
@@ -66,8 +76,9 @@ Spustitelné příklady jsou živá dokumentace — viz tabulka v sekci
 
 ### Control okno: vzhled grafu řízený z backendu
 
-Backend definuje **parametrické okno** (typovaná pole int/string/enum); uživatel
-hodnoty změní a tlačítkem *Použít* je pošle zpět, backend podle nich řídí graf.
+Backend definuje **parametrické okno** (typovaná pole int/number/string/enum/
+bool); hodnoty tečou zpět tlačítkem *Použít*, nebo průběžně při každé změně
+(`live=True`), a backend podle nich řídí graf.
 Tady přepíná hrany mezi **čarami** a **splajny** (bezier) a jejich elasticitu —
 týž graf, jen přepnutý přepínač:
 
@@ -86,8 +97,10 @@ týž graf, jen přepnutý přepínač:
 ## Klíčové koncepty
 
 Vše se točí kolem objektu `Canvas`. Po nastavení grafu zavoláš `vb.serve(canvas)`,
-což spustí server a zablokuje; mutace canvasu pak dělej z jiných vláken (Canvas
-je thread-safe).
+což spustí server a zablokuje; živá data pak řeší `@canvas.every()` úlohy a
+event handlery (žádný threading v uživatelském kódu; Canvas je thread-safe).
+V REPL/Jupyteru použij `vb.serve(canvas, block=False)` — vrátí handle
+s `.port` a `.stop()` a prompt zůstane volný.
 
 ```python
 canvas = vb.Canvas(title="Infrastruktura", dimensions=3, theme="cyber",
@@ -97,11 +110,18 @@ canvas = vb.Canvas(title="Infrastruktura", dimensions=3, theme="cyber",
 canvas.add_node("srv-1", type="server", name="Web 01", ip="10.0.0.5")
 canvas.add_edge("srv-1", "db-1")
 canvas.update_node("srv-1", status="down")     # popisek se přepočte
+canvas.ensure_node("srv-1", status="up")       # upsert: založ, nebo slouč meta
 with canvas.batch():                            # hromadné delty = jedna zpráva
     ...
 
 canvas.node_label("{name} ({ip})")              # šablona popisku z meta klíčů
 canvas.define_type("server", shape="box", color="#28d7fe", size=1.4)
+
+canvas.node("srv-1")["meta"]["ip"]              # čtení stavu (i v handlerech)
+
+@canvas.every(2.0)                              # periodická úloha knihovny
+def tick():
+    canvas.ensure_node("beat", ts="now")
 ```
 
 - **Typy uzlů a témata** — `define_type` (tvary `sphere`/`box`/`octahedron`/
@@ -114,8 +134,17 @@ canvas.define_type("server", shape="box", color="#28d7fe", size=1.4)
   okno s metadaty (styl Amiga Workbench, dok, z-order).
 - **Toky** — `define_flow_type` + `flow(src, dst | path=[…], type=…)`: světelné
   částice po hranách (pakety, zprávy, provoz); `count=None` je trvalý tok.
-- **Control okna** — `ControlWindow` + `open_window(win, on_submit=…)`:
-  backendem řízený parametrický dialog, jehož hodnoty tečou zpět na backend.
+- **Control okna** — `ControlWindow` (pole `integer`/`number`/`string`/`enum`/
+  `boolean`) + `open_window(win, on_submit=…, live=…)`: backendem řízený
+  parametrický dialog; `live=True` posílá hodnoty při každé změně (slider bez
+  tlačítka *Použít*).
+- **Idempotentní zápis a čtení** — `ensure_node`/`ensure_edge` (upsert pro živé
+  zdroje dat), `has_node`/`has_edge`, `node()`/`edge()`, `canvas.nodes`/`edges`.
+- **Import grafů** — `Canvas.from_networkx(G)` / `canvas.add_graph(G,
+  type_attr=…)` (duck-typing, networkx není závislost), `add_edges(pairs)`.
+- **Periodické úlohy a REPL** — `@canvas.every(sekundy)` místo vlastních
+  vláken; `vb.serve(canvas, block=False)` vrací `ServerHandle` (`.port`,
+  `.stop()`, context manager).
 
 Detaily API a chování viz návrhové dokumenty a příklady níže.
 
