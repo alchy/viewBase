@@ -52,6 +52,18 @@ describe('PhysicsCore', () => {
     expect(buf[5]).toBe(0);
   });
 
+  it('duplicitní addLink se ignoruje (reconnect s pending deltami)', () => {
+    const core = new PhysicsCore({ dimensions: 3 });
+    core.applyInit({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      links: [{ source: 'a', target: 'b' }],
+    });
+    core.applyPatch({ addLinks: [{ source: 'a', target: 'b' }] });
+    expect(core.links).toHaveLength(1);
+    core.applyPatch({ addLinks: [{ source: 'b', target: 'a' }] });  // opačné pořadí
+    expect(core.links).toHaveLength(1);
+  });
+
   it('linkKey nekoliduje pro id s mezerami', () => {
     const core = new PhysicsCore({ dimensions: 3 });
     core.applyInit({

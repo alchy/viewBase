@@ -342,6 +342,19 @@ class Canvas:
         del self._edges[key]
         if self._pending["add_edges"].pop(key, None) is None:
             self._pending["remove_edges"][key] = True
+        self._invalidate_flows_locked(key)
+
+    def _invalidate_flows_locked(self, edge_key: tuple[str, str]) -> None:
+        """Zruš trvalé toky, jejichž cesta vede přes odstraněnou hranu.
+        Pokrývá i remove_node – kaskáda maže všechny hrany uzlu a každá
+        cesta přes uzel některou z nich používá. Bez invalidace by stale
+        tok zůstal v initu navždy a klient by mu hromadil částice."""
+        doomed = [fid for fid, f in self._flows.items()
+                  if any(_edge_key(a, b) == edge_key
+                         for a, b in zip(f["path"], f["path"][1:]))]
+        for fid in doomed:
+            del self._flows[fid]
+            self._actions.append({"action": "stop_flow", "flow_id": fid})
 
     # ---- labely --------------------------------------------------------
 

@@ -122,6 +122,28 @@ def test_stop_flow_unknown_id_raises():
         c.stop_flow("deadbeef")
 
 
+def test_remove_node_invalidates_flows_over_it():
+    c = _graph()
+    doomed = c.flow(path=["a", "b"], count=None)
+    kept = c.flow("b", "c", count=None)
+    c.drain_actions()
+    c.remove_node("a")
+    actions = c.drain_actions()
+    assert {"action": "stop_flow", "flow_id": doomed} in actions
+    assert [f["flow_id"] for f in c.snapshot()["flows"]] == [kept]
+
+
+def test_remove_edge_invalidates_flows_over_it():
+    c = _graph()
+    doomed = c.flow(path=["a", "b", "c"], count=None)
+    kept = c.flow("a", "b", count=None)
+    c.drain_actions()
+    c.remove_edge("b", "c")
+    actions = c.drain_actions()
+    assert {"action": "stop_flow", "flow_id": doomed} in actions
+    assert [f["flow_id"] for f in c.snapshot()["flows"]] == [kept]
+
+
 def test_flow_explicit_color_and_size_passed_through():
     c = _graph()
     c.flow("a", "b", color="#112233", size=2.0, speed=1.5)

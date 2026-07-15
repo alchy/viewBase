@@ -117,10 +117,17 @@ export class FlowController {
     this.persistent = new Map();   // flow_id -> Flow (pro stopFlow / replay)
   }
 
+  /** Idempotentní podle flow_id: server může tentýž trvalý tok doručit
+   *  v initu i následnou akcí (connect uprostřed broadcast okna) – starý
+   *  tok se nahradí, nikdy neběží dvakrát. */
   applyFlow(action) {
     const flow = new Flow(action, this.now());
+    if (flow.flowId !== null) {
+      const prev = this.persistent.get(flow.flowId);
+      if (prev) this.flows = this.flows.filter((f) => f !== prev);
+      this.persistent.set(flow.flowId, flow);
+    }
     this.flows.push(flow);
-    if (flow.flowId !== null) this.persistent.set(flow.flowId, flow);
   }
 
   stopFlow(flowId) {
@@ -141,9 +148,17 @@ export class FlowController {
     return this.flows.length;
   }
 
+  /** Efektivní násobek rychlosti: per-flow speed × speed typu toku. */
+  _speedOf(flow) {
+    const style = this.store.flowTypes?.[flow.flowType] ?? null;
+    return flow.speed * (style?.speed ?? 1);
+  }
+
   /** Posuň simulaci o dt, splatné částice vyemituj, doletělé jednorázové
    *  toky uklid. `theme` může být null (testy bez doletu) – pak travelTime=0
-   *  a částice nestárnou (drží se kvůli kontrole emise). */
+   *  a částice nestárnou (drží se kvůli kontrole emise). Toky, jejichž uzel
+   *  zmizel ze store (remove_node), se zahodí – jinak by s travelTime=0
+   *  hromadily částice donekonečna. */
   update(dt, theme) {
     const now = this.now();
     const baseSpeed = theme?.flow?.baseSpeed ?? 0;
@@ -152,12 +167,20 @@ export class FlowController {
       let travelTime = 0;
       if (baseSpeed > 0 && display) {
         const len = pathLength(flow.path, display);
-        const v = baseSpeed * flow.speed;
+        const v = baseSpeed * this._speedOf(flow);
         travelTime = (len > 0 && v > 0) ? len / v : 0;
       }
       flow.step(now, travelTime);
     }
-    this.flows = this.flows.filter((f) => !(f.flowId === null && f.done));
+    const nodes = this.store.nodes;   // undefined v čistě logických testech
+    this.flows = this.flows.filter((f) => {
+      if (f.flowId === null && f.done) return false;
+      if (nodes && f.path.some((id) => !nodes.has(id))) {
+        if (f.flowId !== null) this.persistent.delete(f.flowId);
+        return false;
+      }
+      return true;
+    });
   }
 
   /** Nastav živou mapu pozic (renderer ji předá před update). */
@@ -180,7 +203,7 @@ export class FlowController {
     const now = this.now();
     for (const flow of this.flows) {
       const len = pathLength(flow.path, display);
-      const v = (theme.flow.baseSpeed ?? 0) * flow.speed;
+      const v = (theme.flow.baseSpeed ?? 0) * this._speedOf(flow);
       const travelTime = (len > 0 && v > 0) ? len / v : 0;
       const style = this.store.flowTypes?.[flow.flowType] ?? null;
       const color = resolveFlowColor(flow, style, theme);

@@ -115,6 +115,41 @@ describe('FlowController', () => {
     expect(fc.activeCount()).toBe(1);
   });
 
+  it('applyFlow se stejným flow_id nahradí starý tok (init + akce se nesčítají)', () => {
+    t = 0;
+    const fc = new FlowController(store, { now });
+    fc.applyFlow(makeAction({ count: null, flow_id: 'dup' }));
+    fc.applyFlow(makeAction({ count: null, flow_id: 'dup' }));
+    expect(fc.activeCount()).toBe(1);
+    fc.stopFlow('dup');
+    expect(fc.activeCount()).toBe(0);       // žádná osiřelá kopie
+  });
+
+  it('speed typu toku (define_flow_type) násobí rychlost částic', () => {
+    t = 0;
+    const fc = new FlowController(store, { now });
+    fc.setDisplay(displayMap([['a', [0, 0, 0]], ['b', [10, 0, 0]]]));
+    fc.applyFlow(makeAction({ count: 1, flow_type: 'dns' }));   // dns: speed 1.5
+    const theme = { flow: { baseSpeed: 1 }, palette: [] };
+    fc.update(0, theme);
+    expect(fc.activeCount()).toBe(1);
+    // dolet = 10 / (1 · 1.0 · 1.5) ≈ 6.67 s; bez zohlednění typu by byl 10 s
+    t = 8; fc.update(8, theme);
+    expect(fc.activeCount()).toBe(0);
+  });
+
+  it('tok se zahodí, když jeho uzel zmizí ze store (remove_node)', () => {
+    t = 0;
+    const graphStore = { flowTypes: {}, nodes: new Map([['a', {}], ['b', {}]]) };
+    const fc = new FlowController(graphStore, { now });
+    fc.applyFlow(makeAction({ count: null, flow_id: 'gone' }));
+    fc.update(0, null);
+    expect(fc.activeCount()).toBe(1);
+    graphStore.nodes.delete('b');
+    t = 1; fc.update(1, null);
+    expect(fc.activeCount()).toBe(0);
+  });
+
   it('replayInit nahradí předchozí trvalé toky (reconnect)', () => {
     t = 0;
     const fc = new FlowController(store, { now });

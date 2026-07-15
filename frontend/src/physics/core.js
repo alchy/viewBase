@@ -58,8 +58,16 @@ export class PhysicsCore {
       this.nodes.push(node);
       this.byId.set(id, node);
     }
+    // Idempotence i pro linky: po (re)connectu s pending deltami přijdou
+    // add_edges, které init už obsahoval – duplicitní pružina by hranu
+    // tahala dvojnásobnou silou.
+    const known = new Set(
+      this.links.map((l) => linkKey(endId(l.source), endId(l.target))));
     for (const { source, target } of addLinks) {
+      const key = linkKey(source, target);
+      if (known.has(key)) continue;
       if (this.byId.has(source) && this.byId.has(target)) {
+        known.add(key);
         this.links.push({ source, target });
       }
     }
