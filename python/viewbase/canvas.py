@@ -277,6 +277,12 @@ class Canvas:
 
     def add_node(self, node_id: str, *, type: str | None = None,
                  label: str | None = None, **meta: Any) -> None:
+        self._add_node(node_id, type, label, meta)
+
+    def _add_node(self, node_id: str, type: str | None, label: str | None,
+                  meta: dict[str, Any]) -> None:
+        """Dict-based jádro add_node – import grafů tudy obchází kolizi
+        atributů pojmenovaných 'type'/'label' s kwargs."""
         with self._lock:
             if node_id in self._nodes:
                 raise ValueError(f"Uzel '{node_id}' už existuje")
@@ -294,10 +300,14 @@ class Canvas:
         sloučí meta (patch odejde jen při reálné změně). type/label
         existujícího uzlu měnit neumí (viz update_node / Plán 2b) –
         odlišná hodnota je chyba, shodná nebo nezadaná je no-op."""
+        self._ensure_node(node_id, type, label, meta)
+
+    def _ensure_node(self, node_id: str, type: str | None, label: str | None,
+                     meta: dict[str, Any]) -> None:
         with self._lock:
             node = self._nodes.get(node_id)
             if node is None:
-                self.add_node(node_id, type=type, label=label, **meta)
+                self._add_node(node_id, type, label, meta)
                 return
             if type is not None and type != node["type"]:
                 raise ValueError(
@@ -349,6 +359,10 @@ class Canvas:
     # ---- hrany ---------------------------------------------------------
 
     def add_edge(self, source: str, target: str, **meta: Any) -> None:
+        self._add_edge(source, target, meta)
+
+    def _add_edge(self, source: str, target: str,
+                  meta: dict[str, Any]) -> None:
         with self._lock:
             if source not in self._nodes or target not in self._nodes:
                 raise ValueError(
@@ -366,10 +380,14 @@ class Canvas:
         """Idempotentní add_edge: neexistující hranu založí, existující
         sloučí meta (patch jen při reálné změně; klient add_edges
         upsertuje)."""
+        self._ensure_edge(source, target, meta)
+
+    def _ensure_edge(self, source: str, target: str,
+                     meta: dict[str, Any]) -> None:
         with self._lock:
             edge = self._edges.get(_edge_key(source, target))
             if edge is None:
-                self.add_edge(source, target, **meta)
+                self._add_edge(source, target, meta)
                 return
             merged = {**edge["meta"], **meta}
             if merged == edge["meta"]:
@@ -402,6 +420,48 @@ class Canvas:
         for fid in doomed:
             del self._flows[fid]
             self._actions.append({"action": "stop_flow", "flow_id": fid})
+
+    # ---- import grafů ---------------------------------------------------
+
+    def add_edges(self, pairs) -> None:
+        """Hromadné add_edge: iterovatelné dvojic (source, target)."""
+        with self.batch():
+            for source, target in pairs:
+                self.add_edge(source, target)
+
+    def add_graph(self, graph, *, type_attr: str | None = None,
+                  label: str | None = None) -> None:
+        """Importuj graf ve stylu networkx – duck-typing přes
+        graph.nodes(data=True) a graph.edges(data=True), závislost na
+        networkx nevzniká. Id uzlů se převádí str(), atributy jdou do meta.
+        `type_attr` vybere meta klíč jako typ uzlu (neznámé typy se
+        auto-registrují prázdným stylem), `label` je šablona popisku pro
+        importované uzly. Self-loops se přeskočí s warningem; opakovaný
+        import je díky ensure_* idempotentní."""
+        with self._lock, self.batch():
+            for node_id, data in graph.nodes(data=True):
+                meta = dict(data)
+                node_type = None
+                if type_attr is not None and type_attr in meta:
+                    node_type = str(meta.pop(type_attr))
+                    if node_type not in self._node_types:
+                        self.define_type(node_type)
+                self._ensure_node(str(node_id), node_type, label, meta)
+            for a, b, data in graph.edges(data=True):
+                sa, sb = str(a), str(b)
+                if sa == sb:
+                    logger.warning("add_graph: self-loop '%s' přeskočen", sa)
+                    continue
+                self._ensure_edge(sa, sb, dict(data))
+
+    @classmethod
+    def from_networkx(cls, graph, *, type_attr: str | None = None,
+                      label: str | None = None, **canvas_kwargs) -> "Canvas":
+        """Canvas rovnou z (networkx-like) grafu:
+        vb.serve(vb.Canvas.from_networkx(G), open_browser=True)."""
+        canvas = cls(**canvas_kwargs)
+        canvas.add_graph(graph, type_attr=type_attr, label=label)
+        return canvas
 
     # ---- čtení ---------------------------------------------------------
 
