@@ -1,5 +1,15 @@
 import * as THREE from 'three';
 
+/** True, když má fokus editovatelný prvek (input/textarea/select/contenteditable).
+ *  Tehdy klávesy patří psaní (např. do ovládacího okna), ne ovládání kamery. */
+function isEditableFocused() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    || el.isContentEditable;
+}
+
 const ORBIT_STEP = 0.06;    // rad na krok (auto-repeat klávesy = plynulost)
 const ZOOM_FACTOR = 0.92;   // násobek vzdálenosti (3D) / zoomu (2D) na krok
 const PAN_STEP = 40;        // světové jednotky na krok (2D pan)
@@ -21,6 +31,8 @@ export class KeyboardControls {
       zoom: camera.zoom,
     };
     target.addEventListener('keydown', (e) => {
+      // píše-li uživatel do inputu (ovládací okno), klávesy nepatří kameře
+      if (isEditableFocused()) return;
       if (this.handleKey(e.code)) e.preventDefault();
     });
   }
