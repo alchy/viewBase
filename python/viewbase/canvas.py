@@ -6,6 +6,7 @@ import re
 import threading
 import types
 import uuid
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
@@ -158,25 +159,59 @@ class Canvas:
 
     def _resolve_flow_path(self, source: str | None, target: str | None,
                            path: list[str] | None) -> list[str]:
-        """Sestav a zvaliduj cestu toku: každá sousední dvojice musí být
-        existující hrana, každý uzel musí existovat. Vrátí cestu (>=2 uzly)."""
+        """Sestav cestu toku. `path=[...]` = přesná cesta (každá sousední dvojice
+        musí být existující hrana). Jen `(source, target)` = knihovna **sama najde
+        nejkratší cestu** po hranách (BFS) — stačí zadat konce A→C, mezikroky ne."""
         if path is not None:
             resolved = list(path)
-        elif source is not None and target is not None:
-            resolved = [source, target]
-        else:
-            raise ValueError(
-                "flow vyzaduje bud (source, target), nebo path=[...]")
-        if len(resolved) < 2:
-            raise ValueError("flow path musi mit aspon 2 uzly")
-        for node_id in resolved:
+            if len(resolved) < 2:
+                raise ValueError("flow path musi mit aspon 2 uzly")
+            for node_id in resolved:
+                if node_id not in self._nodes:
+                    raise ValueError(f"flow: uzel '{node_id}' neexistuje")
+            for a, b in zip(resolved, resolved[1:]):
+                if _edge_key(a, b) not in self._edges:
+                    raise ValueError(
+                        f"flow: hrana {a}-{b} neexistuje - tok jede jen po hranach")
+            return resolved
+        if source is not None and target is not None:
+            return self._shortest_path(source, target)
+        raise ValueError("flow vyzaduje bud (source, target), nebo path=[...]")
+
+    def _shortest_path(self, source: str, target: str) -> list[str]:
+        """BFS nejkratší cesta po hranách source→target (zadávají se jen konce).
+
+        Hrany jsou neorientované. Vyhodí ValueError, když uzel neexistuje nebo
+        cesta nevede."""
+        for node_id in (source, target):
             if node_id not in self._nodes:
                 raise ValueError(f"flow: uzel '{node_id}' neexistuje")
-        for a, b in zip(resolved, resolved[1:]):
-            if _edge_key(a, b) not in self._edges:
-                raise ValueError(
-                    f"flow: hrana {a}-{b} neexistuje - tok jede jen po hranach")
-        return resolved
+        if source == target:
+            raise ValueError("flow: source a target musi byt ruzne")
+        adjacency: dict[str, list[str]] = {}
+        for a, b in self._edges:
+            adjacency.setdefault(a, []).append(b)
+            adjacency.setdefault(b, []).append(a)
+        prev: dict[str, str | None] = {source: None}
+        queue = deque([source])
+        while queue:
+            node = queue.popleft()
+            if node == target:
+                break
+            for neighbor in adjacency.get(node, ()):
+                if neighbor not in prev:
+                    prev[neighbor] = node
+                    queue.append(neighbor)
+        if target not in prev:
+            raise ValueError(
+                f"flow: mezi '{source}' a '{target}' nevede cesta")
+        route: list[str] = []
+        node: str | None = target
+        while node is not None:
+            route.append(node)
+            node = prev[node]
+        route.reverse()
+        return route
 
     def flow(self, source: str | None = None, target: str | None = None, *,
              path: list[str] | None = None, type: str | None = None,

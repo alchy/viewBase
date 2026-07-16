@@ -36,10 +36,18 @@ def test_flow_simple_edge_queues_action():
     assert "flow_id" not in action
 
 
-def test_flow_missing_edge_raises():
+def test_flow_routes_through_graph_without_midpoints():
+    c = _graph()                  # a-b-c; přímá hrana a-c NENÍ
+    c.flow("a", "c")              # stačí konce → knihovna najde cestu (BFS)
+    (action,) = c.drain_actions()
+    assert action["path"] == ["a", "b", "c"]
+
+
+def test_flow_no_route_raises():
     c = _graph()
+    c.add_node("d")               # izolovaný uzel, žádná hrana
     with pytest.raises(ValueError):
-        c.flow("a", "c")          # hrana a-c neexistuje (jen a-b, b-c)
+        c.flow("a", "d")
     assert c.drain_actions() == []
 
 
