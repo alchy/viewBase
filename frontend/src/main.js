@@ -89,7 +89,8 @@ function bootstrap() {
     applyTheme(store.config.theme);   // téma (i CSS proměnné oken) nastav dřív
     renderer.setEdgeStyle(store.config.edge_style ?? { style: 'line', elasticity: 0 });
     for (const spec of store.windows ?? []) {
-      windowManager.openControl(spec, submitWindow);
+      if (spec.kind === 'terminal') windowManager.openTerminal(spec, submitTerminal);
+      else windowManager.openControl(spec, submitWindow);
     }
     if (store.config.title) {
       document.title = `${store.config.title} – viewbase`;
@@ -108,6 +109,10 @@ function bootstrap() {
     connection.send(buildEvent('window_submit', payload));
   }
 
+  function submitTerminal(payload) {
+    connection.send(buildEvent('terminal_input', payload));
+  }
+
   const actions = {
     show_detail: (msg) => windowManager.openFor(msg.node_id),
     focus: (msg) => renderer.focusOn(msg.node_id),
@@ -118,8 +123,11 @@ function bootstrap() {
       store.config.theme = msg.theme;     // reconnect → init už ponese nové téma
       applyTheme(msg.theme);
     },
-    open_window: (msg) => windowManager.openControl(msg, submitWindow),
+    open_window: (msg) => (msg.kind === 'terminal'
+      ? windowManager.openTerminal(msg, submitTerminal)
+      : windowManager.openControl(msg, submitWindow)),
     close_window: (msg) => windowManager.closeControl(msg.window_id),
+    terminal_append: (msg) => windowManager.terminalAppend(msg.window_id, msg.text),
     set_edge_style: (msg) => renderer.setEdgeStyle(msg),
   };
 

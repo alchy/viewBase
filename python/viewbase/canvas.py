@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
 
-from .controls import ControlWindow, validate_values
+from .controls import ControlWindow, TerminalWindow, validate_values
 
 logger = logging.getLogger("viewbase")
 
@@ -67,6 +67,8 @@ class Canvas:
         self._windows: dict[str, ControlWindow] = {}
         self._window_callbacks: dict[str, Any] = {}
         self._window_live: dict[str, bool] = {}   # window_id -> live režim
+        self._terminals: dict[str, TerminalWindow] = {}
+        self._terminal_callbacks: dict[str, Any] = {}   # window_id -> on_input
         self._seq = 0
         self._batch_depth = 0
         self._pending = self._empty_pending()
@@ -79,6 +81,7 @@ class Canvas:
         self._tasks: list[dict[str, Any]] = []      # every() úlohy
         self._tasks_stop: threading.Event | None = None   # None = neběží
         self._register("window_submit", self._on_window_submit)
+        self._register("terminal_input", self._on_terminal_input)
 
     @staticmethod
     def _empty_pending() -> dict[str, dict]:
@@ -248,6 +251,38 @@ class Canvas:
             self._window_live.pop(window_id, None)
             self._actions.append(
                 {"action": "close_window", "window_id": window_id})
+
+    def open_terminal(self, window: TerminalWindow, *, on_input=None) -> str:
+        """Otevři/nahraď konzolové okno: ulož do stavu (init replay) a zařaď akci
+        open_window (kind:"terminal"). `on_input` dostane event s .line (řádek,
+        co uživatel napsal). Do okna se píše přes `terminal_write`."""
+        with self._lock:
+            self._terminals[window.window_id] = window
+            if on_input is not None:
+                self._terminal_callbacks[window.window_id] = on_input
+            else:
+                self._terminal_callbacks.pop(window.window_id, None)
+            self._actions.append({**window.spec(), "action": "open_window"})
+        return window.window_id
+
+    def terminal_write(self, window_id: str, text: str) -> None:
+        """Připiš řádek do konzolového okna (delta terminal_append klientům)."""
+        with self._lock:
+            if window_id not in self._terminals:
+                raise ValueError(f"Terminál '{window_id}' neexistuje")
+            self._actions.append({"action": "terminal_append",
+                                  "window_id": window_id, "text": str(text)})
+
+    def _on_terminal_input(self, event) -> None:
+        """Interní handler eventu terminal_input: zavolej on_input okna s řádkem."""
+        window_id = getattr(event, "window_id", None)
+        line = getattr(event, "line", None)
+        if not isinstance(line, str):
+            return
+        with self._lock:
+            callback = self._terminal_callbacks.get(window_id)
+        if callback is not None:
+            callback(event)
 
     def set_edge_style(self, style: str, elasticity: float = 0.0) -> None:
         """Nastav vykreslení hran: 'line' nebo 'spline', elasticity 0..1.
@@ -550,7 +585,8 @@ class Canvas:
                 "flows": [dict(f) for f in self._flows.values()],
                 "windows": [
                     {**w.spec(), "live": self._window_live.get(wid, False)}
-                    for wid, w in self._windows.items()],
+                    for wid, w in self._windows.items()]
+                + [t.spec() for t in self._terminals.values()],
             }
 
     # ---- delty ---------------------------------------------------------

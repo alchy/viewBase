@@ -110,6 +110,33 @@ class ControlWindow:
                 field["value"] = values[field["key"]]
 
 
+class TerminalWindow:
+    """Konzolové okno: prompt + append-only výstup (REPL v prohlížeči).
+
+    Na rozdíl od ControlWindow nemá typovaná pole — je to I/O konzole. Server
+    do něj píše přes `Canvas.terminal_write`, uživatelův řádek přijde eventem
+    `terminal_input`. Spec nese `kind:"terminal"`, aby ho frontend odlišil od
+    formulářového okna."""
+
+    def __init__(self, window_id: str, *, title: str = "",
+                 prompt: str = "> ", width: int = 560) -> None:
+        if width <= 0:
+            raise ValueError("width musí být kladné")
+        self.window_id = window_id
+        self.title = title
+        self.prompt = prompt
+        self.width = int(width)
+
+    def spec(self) -> dict[str, Any]:
+        return {
+            "window_id": self.window_id,
+            "title": self.title,
+            "kind": "terminal",
+            "prompt": self.prompt,
+            "width": self.width,
+        }
+
+
 _DROP = object()   # sentinel: hodnotu zahodit (None je validní string/enum)
 
 

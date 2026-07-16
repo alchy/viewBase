@@ -4,6 +4,7 @@
  *  se re-exportují z base_window.js (zpětná kompatibilita testů). */
 import { BaseWindow, clampToCanvas, dockLayout } from './base_window.js';
 import { ControlWindow } from './control_window.js';
+import { TerminalWindow } from './terminal_window.js';
 
 export { clampToCanvas, dockLayout };
 
@@ -185,6 +186,28 @@ export class WindowManager {
 
   closeControl(windowId) {
     this.windows.get(windowId)?.close();
+  }
+
+  openTerminal(spec, onInput) {
+    const existing = this.windows.get(spec.window_id);
+    if (existing) existing.close();          // nahrazení stejného window_id
+    const win = new TerminalWindow({
+      id: spec.window_id,
+      title: spec.title,
+      prompt: spec.prompt,
+      width: spec.width,
+      onInput,
+      container: this.container,
+      manager: this,
+    });
+    this.windows.set(spec.window_id, win);
+    win.bringToFront();
+    return win;
+  }
+
+  terminalAppend(windowId, text) {
+    const win = this.windows.get(windowId);
+    if (win && win.kind === 'terminal') win.append(text);
   }
 
   onPatch(patch) {
