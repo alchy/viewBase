@@ -123,6 +123,24 @@ def create_app(canvas: Canvas) -> FastAPI:
         finally:
             clients.discard(ws)
 
+    @app.post("/api/event")
+    def inject_event(message: dict) -> dict:
+        """REST vstřik události — totéž, co by poslal prohlížeč přes WS.
+
+        `{"event": "terminal_input", "payload": {"window_id": "konzole",
+        "line": "Kdo je Čapek?"}}` projde týmž `dispatch_event` jako zpráva
+        z prohlížeče: handler (on_input) se zavolá a jeho výstup + mutace
+        canvasu se rozešlou VŠEM připojeným klientům. Určeno pro demo/testy
+        řízené zvenčí (curl) — konverzaci tak lze přehrát do otevřených oken.
+        Sync endpoint (threadpool): blokující handler nezmrazí WS broadcast.
+        """
+        event = message.get("event")
+        payload = message.get("payload") or {}
+        if not isinstance(event, str) or not isinstance(payload, dict):
+            return {"ok": False, "error": "čekám {event: str, payload: dict}"}
+        canvas.dispatch_event(event, {**payload, "client_id": "rest"})
+        return {"ok": True}
+
     if STATIC_DIR.is_dir():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True),
                   name="static")
