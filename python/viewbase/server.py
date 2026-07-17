@@ -141,6 +141,16 @@ def create_app(canvas: Canvas) -> FastAPI:
         canvas.dispatch_event(event, {**payload, "client_id": "rest"})
         return {"ok": True}
 
+    @app.middleware("http")
+    async def _no_html_cache(request, call_next):
+        """index.html se nikdy necachuje — odkazuje na hashované bundly;
+        zastaralé HTML by po deployi drželo starý frontend (a např.
+        perzistence pozic by „nefungovala")."""
+        response = await call_next(request)
+        if request.url.path in ("/", "/index.html"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     if STATIC_DIR.is_dir():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True),
                   name="static")
