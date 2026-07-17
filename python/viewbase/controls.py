@@ -25,9 +25,11 @@ def _normalize_options(options: list) -> list[dict]:
 class ControlWindow:
     """Parametrické okno: uspořádaný seznam typovaných polí."""
 
-    def __init__(self, window_id: str, *, title: str = "") -> None:
+    def __init__(self, window_id: str, *, title: str = "",
+                 closable: bool = True) -> None:
         self.window_id = window_id
         self.title = title
+        self.closable = bool(closable)  # False = bez gadgetu [x] (neobnovitelné)
         self._fields: list[dict[str, Any]] = []
 
     def integer(self, key: str, label: str, *, min: int, max: int,
@@ -92,6 +94,7 @@ class ControlWindow:
         return {
             "window_id": self.window_id,
             "title": self.title,
+            "closable": self.closable,
             "fields": [self._copy_field(f) for f in self._fields],
         }
 
@@ -119,13 +122,16 @@ class TerminalWindow:
     formulářového okna."""
 
     def __init__(self, window_id: str, *, title: str = "",
-                 prompt: str = "> ", width: int = 560) -> None:
+                 prompt: str = "> ", width: int = 560,
+                 closable: bool = True, input: bool = True) -> None:  # pylint: disable=redefined-builtin
         if width <= 0:
             raise ValueError("width musí být kladné")
         self.window_id = window_id
         self.title = title
         self.prompt = prompt
         self.width = int(width)
+        self.closable = bool(closable)  # False = bez gadgetu [x] (neobnovitelné)
+        self.input = bool(input)        # False = jen výstup (živý panel bez promptu)
 
     def spec(self) -> dict[str, Any]:
         return {
@@ -134,6 +140,8 @@ class TerminalWindow:
             "kind": "terminal",
             "prompt": self.prompt,
             "width": self.width,
+            "closable": self.closable,
+            "input": self.input,
         }
 
 

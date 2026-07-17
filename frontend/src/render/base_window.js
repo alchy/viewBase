@@ -22,14 +22,25 @@ const DOCK_SLOT_WIDTH = 160;
 const DOCK_GAP = 8;
 const DOCK_SLOT_HEIGHT = 28;
 
+const POS_PREFIX = 'vb-pos:';   // localStorage klíč perzistence pozic oken
+
+/** Klíč perzistence pozice: id okna; bez id poslouží název okna
+ *  („Aktivační okno"). Bez obojího se pozice neukládá (null). */
+export function posKey(id, title) {
+  const key = id ?? title;
+  return key ? POS_PREFIX + String(key) : null;
+}
+
 export class BaseWindow {
-  constructor({ id, title, widthChars, container, manager, kind }) {
+  constructor({ id, title, widthChars, container, manager, kind,
+    closable = true }) {
     this.id = id;
     this.title = title;
     this.widthChars = widthChars;
     this.container = container;
     this.manager = manager;
     this.kind = kind;            // 'detail' | 'control'
+    this.closable = closable !== false;  // false = bez gadgetu [x]
     this.isMinimized = false;
     this.saved = null;
     this.dragOffset = null;
@@ -62,8 +73,35 @@ export class BaseWindow {
     const offset = (this.manager.windows.size % 8) * 24;
     const start = clampToCanvas(40 + offset, 40 + offset,
       this._width(), 200, bounds);
-    this._place(start.x, start.y);
+    // perzistence: uložená pozice (localStorage) má přednost před kaskádou
+    const saved = this._loadPos();
+    const pos = saved
+      ? clampToCanvas(saved.x, saved.y, this._width(), 200, bounds)
+      : start;
+    this._place(pos.x, pos.y);
     this.el.addEventListener('pointerdown', () => this.bringToFront());
+  }
+
+  _posKey() { return posKey(this.id, this.title); }
+
+  _loadPos() {
+    const key = this._posKey();
+    if (!key) return null;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const pos = JSON.parse(raw);
+      if (Number.isFinite(pos?.x) && Number.isFinite(pos?.y)) return pos;
+    } catch { /* privátní režim / vadný záznam → kaskáda */ }
+    return null;
+  }
+
+  _savePos() {
+    const key = this._posKey();
+    if (!key) return;
+    try {
+      localStorage.setItem(key, JSON.stringify({ x: this.x, y: this.y }));
+    } catch { /* localStorage nedostupný → pozice se prostě neuloží */ }
   }
 
   _width() { return this.widthChars * 8 + 24; }
@@ -85,11 +123,16 @@ export class BaseWindow {
       'color:var(--vb-window-header-fg, #1f2430)',
     ].join(';');
 
-    this.closeGadget = this._gadget('close', '×');
-    this.closeGadget.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.close();
-    });
+    // closable=false: okno bez [x] — po zavření by bylo neobnovitelné
+    // (programové close() zůstává, řeší náhradu okna se stejným id)
+    this.closeGadget = null;
+    if (this.closable) {
+      this.closeGadget = this._gadget('close', '×');
+      this.closeGadget.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.close();
+      });
+    }
 
     this.titleEl = document.createElement('div');
     this.titleEl.textContent = this.title;
@@ -111,8 +154,8 @@ export class BaseWindow {
     });
     this.restoreGadget.style.display = 'none';
 
-    bar.append(this.closeGadget, this.titleEl,
-      this.minGadget, this.restoreGadget);
+    if (this.closeGadget) bar.append(this.closeGadget);
+    bar.append(this.titleEl, this.minGadget, this.restoreGadget);
     this._dragFromHeader(bar);
     this.bar = bar;
     this.el.appendChild(bar);
@@ -155,6 +198,7 @@ export class BaseWindow {
       if (this.dragOffset) {
         this.dragOffset = null;
         try { bar.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+        if (!this.isMinimized) this._savePos();   // pozice přežije reload
       }
     };
     bar.addEventListener('pointerup', end);

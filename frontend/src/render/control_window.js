@@ -45,8 +45,11 @@ export function readValues(fields, rawMap) {
 export class ControlWindow extends BaseWindow {
   constructor({
     id, title, fields, widthChars, onSubmit, container, manager, live = false,
+    closable,
   }) {
-    super({ id, title, widthChars, container, manager, kind: 'control' });
+    super({
+      id, title, widthChars, container, manager, kind: 'control', closable,
+    });
     this.fields = fields;
     this.onSubmit = onSubmit;
     this.live = Boolean(live);

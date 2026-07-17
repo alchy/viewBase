@@ -16,12 +16,14 @@ export function widthToChars(width) {
 }
 
 export class TerminalWindow extends BaseWindow {
-  constructor({ id, title, prompt, width, onInput, container, manager }) {
+  constructor({ id, title, prompt, width, onInput, container, manager,
+    closable, input }) {
     super({
       id, title, widthChars: widthToChars(width),
-      container, manager, kind: 'terminal',
+      container, manager, kind: 'terminal', closable,
     });
     this.prompt = prompt ?? '> ';
+    this.hasInput = input !== false;   // false = jen výstup (živý panel)
     this.onInput = onInput;
     this._buildBody();
     this._mount();
@@ -46,28 +48,34 @@ export class TerminalWindow extends BaseWindow {
     ].join(';');
     this.output = output;
 
-    const inputRow = document.createElement('div');
-    inputRow.style.cssText = 'display:flex;align-items:center;gap:4px';
-    const promptEl = document.createElement('span');
-    promptEl.textContent = this.prompt;
-    promptEl.style.cssText = 'color:var(--vb-window-key, #667788);flex:0 0 auto';
-    // Obyčejný viditelný <input> jako v ControlWindow — na přímý klik se nativně
-    // zafokusuje a KeyboardControls (isEditableFocused) přestane ovládat kameru.
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.dataset.role = 'terminal-input';
-    input.style.cssText = 'flex:1 1 auto;min-width:0;font:inherit';
-    input.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.stopPropagation();
-      const line = input.value.trim();
-      input.value = '';
-      if (line) this._submit(line);
-    });
-    this.input = input;
-    inputRow.append(promptEl, input);
+    body.append(output);
+    // input=false: čistě výstupní panel (živé okno bez dialogu) — žádný
+    // prompt ani vstupní řádek
+    if (this.hasInput) {
+      const inputRow = document.createElement('div');
+      inputRow.style.cssText = 'display:flex;align-items:center;gap:4px';
+      const promptEl = document.createElement('span');
+      promptEl.textContent = this.prompt;
+      promptEl.style.cssText =
+        'color:var(--vb-window-key, #667788);flex:0 0 auto';
+      // Obyčejný viditelný <input> jako v ControlWindow — na přímý klik se
+      // nativně zafokusuje a KeyboardControls přestane ovládat kameru.
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.dataset.role = 'terminal-input';
+      input.style.cssText = 'flex:1 1 auto;min-width:0;font:inherit';
+      input.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.stopPropagation();
+        const line = input.value.trim();
+        input.value = '';
+        if (line) this._submit(line);
+      });
+      this.input = input;
+      inputRow.append(promptEl, input);
+      body.append(inputRow);
+    }
 
-    body.append(output, inputRow);
     this.body = body;
     this.el.appendChild(body);
   }
