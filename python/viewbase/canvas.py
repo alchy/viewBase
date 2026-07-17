@@ -706,6 +706,12 @@ class Canvas:
 
     # ---- eventy ----------------------------------------------------------
 
+    def on(self, event: str,
+           func: Callable[[Any], None]) -> Callable[[Any], None]:
+        """Obecná registrace handleru eventu — vlastní eventy zvenčí přes
+        REST `/api/event` (např. „terminal_write" pushnutý časovačem)."""
+        return self._register(event, func)
+
     def on_click(self, func: Callable[[Any], None]) -> Callable[[Any], None]:
         return self._register("node_click", func)
 
